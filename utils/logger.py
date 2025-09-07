@@ -1,0 +1,16 @@
+import logging
+import sys
+
+
+def get_logger(name: str) -> logging.Logger:
+    logger = logging.getLogger(name)
+    if logger.handlers:
+        return logger
+    logger.setLevel(logging.INFO)
+    h = logging.StreamHandler(sys.stdout)
+    fmt = logging.Formatter(
+        "[%(asctime)s] %(levelname)s %(name)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S"
+    )
+    h.setFormatter(fmt)
+    logger.addHandler(h)
+    return logger

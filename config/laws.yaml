@@ -1,0 +1,23 @@
+jurisdictions:
+  - code: NZ
+    name: New Zealand
+  - code: BVI
+    name: British Virgin Islands
+
+obligations:
+  - trust: whenua-aurora
+    name: IRD Annual Return
+    kind: compliance
+    schedule: annual
+    authority: IRD
+    details:
+      statute: "Tax Administration Act"
+      link: "https://www.ird.govt.nz/"
+
+  - trust: whenua-aurora
+    name: Airspace Privacy Declaration
+    kind: covenant
+    schedule: on change-of-law
+    authority: CIVIL AVIATION AUTHORITY
+    details:
+      notes: "Declare/record privacy corridor above estate; align with Part 101/102 unmanned aircraft rules"

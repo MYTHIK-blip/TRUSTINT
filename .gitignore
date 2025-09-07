@@ -1,0 +1,39 @@
+.venv/
+__pycache__/
+*.pyc
+*.db
+logs/
+vault/
+dist/
+# build / env / caches / dist
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+trustint.egg-info/
+dist/
+
+# vault runtime/state
+vault/*.db*
+vault/*.jsonl
+vault/**/events.jsonl
+vault/assets/**
+vault/compliance/**
+vault/matrices/**
+vault/trusts/**
+# build / env / caches / dist
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+trustint.egg-info/
+dist/
+
+# vault runtime/state
+vault/*.db*
+vault/*.jsonl
+vault/**/events.jsonl
+vault/assets/**
+vault/compliance/**
+vault/matrices/**
+vault/trusts/**

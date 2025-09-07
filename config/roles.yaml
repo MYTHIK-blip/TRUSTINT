@@ -1,0 +1,12 @@
+- trust: whenua-aurora
+  role: trustee
+  party: Aurora Trustees Ltd
+  powers:
+    signing_threshold: 2
+    veto: ["asset-disposition-over-500k", "airspace-corridor-change"]
+
+- trust: whenua-aurora
+  role: protector
+  party: K. Mcleod
+  powers:
+    veto: ["change-of-law-decanting", "migration-redomiciliation"]

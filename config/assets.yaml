@@ -1,0 +1,19 @@
+- trust: whenua-aurora
+  class: land
+  descriptor: "Lot 12 DP 34567, Title NA123/45 — 20.5 ha pastoral with native reserve"
+  jurisdiction: NZ
+  metadata:
+    coordinates: [-36.8485, 174.7633]
+    titles: ["NA123/45"]
+
+- trust: whenua-aurora
+  class: water
+  descriptor: "Riparian rights — Stream Te Ariki (adjacent to Lot 12); non-extractive stewardship"
+  jurisdiction: NZ
+
+- trust: whenua-aurora
+  class: air
+  descriptor: "Airspace above Lot 12 — 0–120m AGL privacy corridor; 120–400ft monitored"
+  jurisdiction: NZ
+  metadata:
+    monitoring: "planned"
