@@ -1,109 +1,124 @@
-import argparse
+# scripts/migrate.py
+
+from __future__ import annotations
+
+import re
 import sqlite3
-import time
 from pathlib import Path
+from typing import List
 
 from utils.logger import get_logger
+from utils.provenance import append_event, sha256_file
 
 LOG = get_logger("migrate")
+MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
 
-DB_PATH = Path("vault/trustint.db")
-MIGRATIONS_DIR = Path("migrations")
-
-
-def connect() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(DB_PATH)
-    con.row_factory = sqlite3.Row
-    con.execute("PRAGMA journal_mode=WAL;")
-    con.execute("PRAGMA foreign_keys=ON;")
-    return con
+# Canonical migration filename pattern: V###__name.sql
+_MIGRATION_RE = re.compile(r"^V(\d+)__([A-Za-z0-9_]+)\.sql$")
 
 
-def _init_migrations_table(con: sqlite3.Connection):
-    con.execute(
-        """
-        CREATE TABLE IF NOT EXISTS schema_migrations (
-            version TEXT PRIMARY KEY,
-            applied_ts TEXT NOT NULL
-        );
-        """
-    )
-    con.commit()
+def _parse_version_from_name(fname: str) -> int:
+    """Return the integer version from a canonical migration filename.
+
+    Raises:
+        ValueError: if the filename does not match the canonical pattern.
+    """
+    m = _MIGRATION_RE.match(fname)
+    if m is None:
+        raise ValueError(
+            f"Invalid migration filename (expected 'V###__name.sql'): {fname!r}"
+        )
+    return int(m.group(1))
 
 
-def get_applied_migrations(con: sqlite3.Connection) -> set[str]:
-    cursor = con.execute("SELECT version FROM schema_migrations")
-    return {row["version"] for row in cursor.fetchall()}
-
-
-def get_pending_migrations() -> list[Path]:
-    if not MIGRATIONS_DIR.exists():
+def _discover_migrations() -> List[Path]:
+    """Return a sorted list of valid migration files by version."""
+    if not MIGRATIONS_DIR.is_dir():
         return []
-    # Get all SQL files in the migrations directory, sorted lexically
-    return sorted(MIGRATIONS_DIR.glob("V*.sql"))
+    candidates = list(MIGRATIONS_DIR.glob("V*.sql"))
+    # Keep only files that match the canonical pattern
+    valid = [p for p in candidates if _MIGRATION_RE.match(p.name) is not None]
+    # Sort by parsed version
+    valid.sort(key=lambda p: _parse_version_from_name(p.name))
+    return valid
 
 
-def apply_migration(con: sqlite3.Connection, migration_file: Path):
-    version = migration_file.stem  # e.g., V001__initial_schema
-    applied_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-    LOG.info("Applying migration: %s", version)
-    with open(migration_file, "r", encoding="utf-8") as f:
-        con.executescript(f.read())
-
-    con.execute(
-        "INSERT INTO schema_migrations (version, applied_ts) VALUES (?, ?)",
-        (version, applied_ts),
-    )
-    con.commit()
-    LOG.info("DB_MIGRATION_APPLIED: Migration %s applied successfully.", version)
+def get_db_version(con: sqlite3.Connection) -> int:
+    """Get the current schema version from the database."""
+    try:
+        cur = con.execute("SELECT version FROM schema_version")
+        row = cur.fetchone()
+        return row[0] if row else 0
+    except sqlite3.OperationalError:
+        # schema_version table doesn't exist yet
+        return 0
 
 
-def main():
-    parser = argparse.ArgumentParser(description="TRUSTINT Database Migration Tool")
-    parser.add_argument(
-        "--plan", action="store_true", help="Show migration plan without applying."
-    )
-    parser.add_argument(
-        "--apply", action="store_true", help="Apply pending migrations."
-    )
-    args = parser.parse_args()
+def set_db_version(con: sqlite3.Connection, version: int) -> None:
+    """Set the schema version in the database."""
+    con.execute("UPDATE schema_version SET version = ?", (version,))
 
-    if not args.plan and not args.apply:
-        parser.print_help()
+
+def run_migrations(db_path: Path, target_version: int | None = None) -> None:
+    """Scan migrations directory and apply pending migrations."""
+    LOG.info("Starting database migration process...")
+
+    migration_files = _discover_migrations()
+    if not migration_files:
+        LOG.warning("No migration files found at %s. Nothing to do.", MIGRATIONS_DIR)
         return
 
-    with connect() as con:
-        _init_migrations_table(con)
-        applied_migrations = get_applied_migrations(con)
-        pending_migrations = get_pending_migrations()
+    with sqlite3.connect(db_path) as con:
+        current_version = get_db_version(con)
+        LOG.info("Current DB version: %d", current_version)
 
-        migrations_to_run = []
-        for migration_file in pending_migrations:
-            version = migration_file.stem
-            if version not in applied_migrations:
-                migrations_to_run.append(migration_file)
-            else:
-                LOG.info("DB_MIGRATION_SKIPPED: Migration %s already applied.", version)
+        # Determine effective target version
+        if target_version is None:
+            # Default to the latest version found among valid files
+            effective_target = _parse_version_from_name(migration_files[-1].name)
+        else:
+            effective_target = target_version
 
-        if not migrations_to_run:
-            LOG.info("No pending migrations.")
+        LOG.info("Target DB version: %d", effective_target)
+
+        if current_version >= effective_target:
+            LOG.info(
+                "Database is already at or beyond the target version. No migration needed."
+            )
             return
 
-        LOG.info(
-            "DB_MIGRATION_PLAN: Found %d pending migrations.", len(migrations_to_run)
-        )
-        for migration_file in migrations_to_run:
-            LOG.info("  - %s", migration_file.name)
+        applied_count = 0
+        for migration_file in migration_files:
+            version = _parse_version_from_name(migration_file.name)
+            if current_version < version <= effective_target:
+                LOG.info("Applying migration %s...", migration_file.name)
 
-        if args.apply:
-            for migration_file in migrations_to_run:
-                apply_migration(con, migration_file)
-            LOG.info("All pending migrations applied.")
-        elif args.plan:
-            LOG.info("Run with --apply to apply these migrations.")
+                # Execute the migration script
+                sql_script = migration_file.read_text(encoding="utf-8")
+                con.executescript(sql_script)
 
+                # Update the schema version
+                set_db_version(con, version)
 
-if __name__ == "__main__":
-    main()
+                # Log provenance
+                event = {
+                    "type": "MIGRATION_APPLY",
+                    "version": version,
+                    "script": migration_file.name,
+                    "sha256": sha256_file(migration_file),
+                }
+                append_event(event)
+
+                LOG.info(
+                    "Successfully applied version %d and logged provenance event.",
+                    version,
+                )
+                current_version = version
+                applied_count += 1
+
+        con.commit()
+
+    if applied_count > 0:
+        LOG.info("Migration process complete. Applied %d migration(s).", applied_count)
+    else:
+        LOG.info("No new migrations to apply.")
