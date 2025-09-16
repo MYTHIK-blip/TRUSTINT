@@ -1,0 +1,33 @@
+
+# TRUSTINT Intake Policy
+#
+# Defines rules for the `trustint run --watch` command to validate incoming files.
+# Files are evaluated against these rules before being accepted into the vault.
+#
+# Format:
+#   - `allowed_extensions`: A list of file extensions that are permitted.
+#   - `max_size_bytes`: The maximum allowed file size in bytes.
+
+version: 1.0
+
+rules:
+  allowed_extensions:
+    - ".txt"
+    - ".csv"
+    - ".json"
+    - ".xml"
+    - ".pdf"
+    - ".asc" # PGP signature files
+
+  max_size_bytes: 10485760 # 10 MB
+
+# Reject codes are used in quarantine tickets to provide a clear reason for rejection.
+reject_codes:
+  - code: "E001"
+    description: "Disallowed file extension."
+  - code: "E002"
+    description: "File size exceeds the maximum limit."
+  - code: "E003"
+    description: "File failed checksum verification."
+  - code: "E004"
+    description: "Unknown error during processing."
