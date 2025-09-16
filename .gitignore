@@ -1,39 +1,76 @@
+# ─────────────────────────────────────────────────────────────
+# TRUSTINT .gitignore — Silver 2a discipline
+# ─────────────────────────────────────────────────────────────
+
+# 1) Local env / tool caches / build metadata
 .venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
 __pycache__/
 *.pyc
-*.db
+*.pyo
+*.pyd
+*.pytest_cache/
+*.coverage
+.coverage*
+.coverage.*
+.cache/
+.eggs/
+*.egg-info/
+trustint.egg-info/
+
+# Editors / OS
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 2) Logs
 logs/
+*.log
+
+# 3) Distribution artifacts (default: ignore all)
+dist/
+# If you later want to publish a minimal attested release footprint in Git,
+# uncomment specific allowlists below and keep the rest ignored:
+# !dist/PROVENANCE_HEAD
+# !dist/SHA256SUMS
+# !dist/manifest.jsonl
+# (leave tarballs and large files ignored)
+
+# 4) Vault (authoritative runtime state) — NEVER commit live state
 vault/
-dist/
-# build / env / caches / dist
-.venv/
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
-trustint.egg-info/
-dist/
-
-# vault runtime/state
 vault/*.db*
-vault/*.jsonl
 vault/**/events.jsonl
+vault/.hmac_key
+vault/raw/**
+vault/quarantine/**
 vault/assets/**
 vault/compliance/**
 vault/matrices/**
 vault/trusts/**
-# build / env / caches / dist
-.venv/
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
-trustint.egg-info/
-dist/
 
-# vault runtime/state
-vault/*.db*
-vault/*.jsonl
-vault/**/events.jsonl
-vault/assets/**
-vault/compliance/**
-vault/matrices/**
-vault/trusts/**
+# Allow placeholder keepers so directories exist in a fresh clone
+!vault/.keep
+!vault/raw/.keep
+!vault/quarantine/.keep
+!vault/assets/.keep
+!vault/compliance/.keep
+!vault/matrices/.keep
+!vault/trusts/.keep
+
+# 5) SQLite scratch / backups anywhere (belt & braces)
+*.db
+*.db-*
+*.db.*
+*.sqlite
+*.sqlite3
+
+# 6) Packaging caches
+build/
+dist/
+pip-wheel-metadata/
