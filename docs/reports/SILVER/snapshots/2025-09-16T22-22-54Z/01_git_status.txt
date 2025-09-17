@@ -1,0 +1,20 @@
+## main...origin/main [ahead 4]
+M  .gitignore
+ M .ruff.toml
+ M README.md
+ M scripts/migrate.py
+ M scripts/trustint.py
+MM tests/conftest.py
+AM tests/test_coherence.py
+AM tests/test_inbox.py
+AM tests/test_migrations.py
+AM tests/test_quarantine.py
+ M utils/provenance.py
+?? BRONZE_GATE_OVERVIEW.md
+?? SILVER_GO_AHEAD_PLAN.md
+?? TRUSTINT_Full_Architecture_Overview.md
+?? docs/CHECKS/
+?? docs/OPERATIONS.md
+?? docs/progress/
+?? docs/reports/SILVER/
+?? docs/reports/SILVER_360.md

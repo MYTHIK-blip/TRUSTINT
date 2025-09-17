@@ -1,0 +1,1006 @@
+diff --git a/.gitattributes b/.gitattributes
+new file mode 100644
+index 0000000..114f03d
+--- /dev/null
++++ b/.gitattributes
+@@ -0,0 +1,23 @@
++# Normalize text; always commit with LF
++* text=auto eol=lf
++
++# Treat release bundles and runtime state as binary (no diffs)
++dist/* binary
++vault/* binary
++
++# Shell scripts keep executable bit normalized across platforms
++*.sh text eol=lf
++
++# Markdown and YAML are text, keep LF
++*.md  text eol=lf
++*.yml text eol=lf
++*.yaml text eol=lf
++
++# Optional: don’t include dev clutter in `git archive`
++.gitignore export-ignore
++.gitattributes export-ignore
++.github/ export-ignore
++.mypy_cache/ export-ignore
++.pytest_cache/ export-ignore
++.ruff_cache/ export-ignore
++.venv/ export-ignore
+diff --git a/.gitignore b/.gitignore
+index ee62878..ce8db76 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,39 +1,76 @@
+-.venv/
+-__pycache__/
+-*.pyc
+-*.db
+-logs/
+-vault/
+-dist/
+-# build / env / caches / dist
+-.venv/
+-.mypy_cache/
+-.ruff_cache/
+-.pytest_cache/
+-trustint.egg-info/
+-dist/
++# ─────────────────────────────────────────────────────────────
++# TRUSTINT .gitignore — Silver 2a discipline
++# ─────────────────────────────────────────────────────────────
+
+-# vault runtime/state
+-vault/*.db*
+-vault/*.jsonl
+-vault/**/events.jsonl
+-vault/assets/**
+-vault/compliance/**
+-vault/matrices/**
+-vault/trusts/**
+-# build / env / caches / dist
++# 1) Local env / tool caches / build metadata
+ .venv/
+ .mypy_cache/
+ .ruff_cache/
+ .pytest_cache/
++__pycache__/
++*.pyc
++*.pyo
++*.pyd
++*.pytest_cache/
++*.coverage
++.coverage*
++.coverage.*
++.cache/
++.eggs/
++*.egg-info/
+ trustint.egg-info/
++
++# Editors / OS
++*.swp
++*.swo
++*~
++.vscode/
++.idea/
++.DS_Store
++Thumbs.db
++
++# 2) Logs
++logs/
++*.log
++
++# 3) Distribution artifacts (default: ignore all)
+ dist/
++# If you later want to publish a minimal attested release footprint in Git,
++# uncomment specific allowlists below and keep the rest ignored:
++# !dist/PROVENANCE_HEAD
++# !dist/SHA256SUMS
++# !dist/manifest.jsonl
++# (leave tarballs and large files ignored)
+
+-# vault runtime/state
++# 4) Vault (authoritative runtime state) — NEVER commit live state
++vault/
+ vault/*.db*
+-vault/*.jsonl
+ vault/**/events.jsonl
++vault/.hmac_key
++vault/raw/**
++vault/quarantine/**
+ vault/assets/**
+ vault/compliance/**
+ vault/matrices/**
+ vault/trusts/**
++
++# Allow placeholder keepers so directories exist in a fresh clone
++!vault/.keep
++!vault/raw/.keep
++!vault/quarantine/.keep
++!vault/assets/.keep
++!vault/compliance/.keep
++!vault/matrices/.keep
++!vault/trusts/.keep
++
++# 5) SQLite scratch / backups anywhere (belt & braces)
++*.db
++*.db-*
++*.db.*
++*.sqlite
++*.sqlite3
++
++# 6) Packaging caches
++build/
++dist/
++pip-wheel-metadata/
+diff --git a/config/intake.yaml b/config/intake.yaml
+new file mode 100644
+index 0000000..5d5ccd1
+--- /dev/null
++++ b/config/intake.yaml
+@@ -0,0 +1,33 @@
++
++# TRUSTINT Intake Policy
++#
++# Defines rules for the `trustint run --watch` command to validate incoming files.
++# Files are evaluated against these rules before being accepted into the vault.
++#
++# Format:
++#   - `allowed_extensions`: A list of file extensions that are permitted.
++#   - `max_size_bytes`: The maximum allowed file size in bytes.
++
++version: 1.0
++
++rules:
++  allowed_extensions:
++    - ".txt"
++    - ".csv"
++    - ".json"
++    - ".xml"
++    - ".pdf"
++    - ".asc" # PGP signature files
++
++  max_size_bytes: 10485760 # 10 MB
++
++# Reject codes are used in quarantine tickets to provide a clear reason for rejection.
++reject_codes:
++  - code: "E001"
++    description: "Disallowed file extension."
++  - code: "E002"
++    description: "File size exceeds the maximum limit."
++  - code: "E003"
++    description: "File failed checksum verification."
++  - code: "E004"
++    description: "Unknown error during processing."
+diff --git a/migrations/V002__add_rbac_tables.sql b/migrations/V002__add_rbac_tables.sql
+new file mode 100644
+index 0000000..e9bb4de
+--- /dev/null
++++ b/migrations/V002__add_rbac_tables.sql
+@@ -0,0 +1,25 @@
++-- Silver Sprint 1: Prefigure RBAC by adding users and permissions.
++
++-- A table to hold users who can interact with the system.
++-- In the future, this will store credentials. For now, it links a user to a party.
++CREATE TABLE IF NOT EXISTS users (
++    id INTEGER PRIMARY KEY,
++    party TEXT UNIQUE NOT NULL, -- Corresponds to the 'party' field in the existing 'roles' table
++    created_at TEXT NOT NULL
++);
++
++-- A table to define the permissions for each role type.
++-- This makes the permissions part of the auditable schema.
++CREATE TABLE IF NOT EXISTS role_permissions (
++    id INTEGER PRIMARY KEY,
++    role_type TEXT NOT NULL, -- e.g., 'trustee', 'auditor', 'secretariat'
++    permission TEXT NOT NULL, -- e.g., 'can_read_reports', 'can_ingest_data'
++    UNIQUE(role_type, permission)
++);
++
++-- Example permissions for core roles.
++INSERT OR IGNORE INTO role_permissions (role_type, permission) VALUES
++    ('trustee', 'can_read_reports'),
++    ('protector', 'can_read_reports'),
++    ('auditor', 'can_read_reports'),
++    ('auditor', 'can_verify_ledger');
+diff --git a/migrations/V003__add_inbox_and_quarantine.sql b/migrations/V003__add_inbox_and_quarantine.sql
+new file mode 100644
+index 0000000..f78cfb1
+--- /dev/null
++++ b/migrations/V003__add_inbox_and_quarantine.sql
+@@ -0,0 +1,37 @@
++-- Silver Sprint-2a: Inbox/WORM + Quarantine
++--
++-- Create inbox_log for tracking all incoming files, their metadata,
++-- and the policy decisions made. This table acts as a Write-Once-Read-Many
++-- (WORM) log for intake events. The UNIQUE constraint on (sha256, decision)
++-- prevents processing the same file for the same outcome multiple times,
++-- supporting idempotency.
++--
++-- Create quarantine_ticket for managing rejected files. Each ticket
++-- corresponds to a file that failed intake policies and requires manual
++-- review.
++BEGIN;
++
++CREATE TABLE IF NOT EXISTS inbox_log (
++    id INTEGER PRIMARY KEY,
++    sha256 TEXT NOT NULL,
++    src TEXT,
++    size_bytes INTEGER,
++    mime_type TEXT,
++    file_ext TEXT,
++    policy_id TEXT,
++    decision TEXT NOT NULL CHECK(decision IN ('ACCEPT', 'REJECT', 'DUPLICATE')),
++    ticket_id TEXT NULL,
++    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
++    UNIQUE(sha256, decision)
++) STRICT;
++
++CREATE TABLE IF NOT EXISTS quarantine_ticket (
++    id TEXT PRIMARY KEY,
++    reason TEXT NOT NULL,
++    sha256 TEXT NOT NULL,
++    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
++    resolved_at TEXT NULL,
++    note TEXT NULL
++) STRICT;
++
++COMMIT;
+diff --git a/schema.sql b/schema.sql
+index 1a3c29e..0a55d31 100644
+--- a/schema.sql
++++ b/schema.sql
+@@ -63,3 +63,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search_idx USING fts5(
+   content,                           -- textual body
+   tokenize='unicode61 remove_diacritics 2'
+ );
++
++-- A table to track the current schema version of the database.
++CREATE TABLE IF NOT EXISTS schema_version (
++  version INTEGER NOT NULL UNIQUE
++);
++
++-- The base schema is version 1.
++INSERT OR IGNORE INTO schema_version (version) VALUES (1);
+diff --git a/scripts/migrate.py b/scripts/migrate.py
+index 0a7b94a..173ab62 100644
+--- a/scripts/migrate.py
++++ b/scripts/migrate.py
+@@ -1,109 +1,124 @@
+-import argparse
++# scripts/migrate.py
++
++from __future__ import annotations
++
++import re
+ import sqlite3
+-import time
+ from pathlib import Path
++from typing import List
+
+ from utils.logger import get_logger
++from utils.provenance import append_event, sha256_file
+
+ LOG = get_logger("migrate")
++MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
++
++# Canonical migration filename pattern: V###__name.sql
++_MIGRATION_RE = re.compile(r"^V(\d+)__([A-Za-z0-9_]+)\.sql$")
+
+-DB_PATH = Path("vault/trustint.db")
+-MIGRATIONS_DIR = Path("migrations")
+
++def _parse_version_from_name(fname: str) -> int:
++    """Return the integer version from a canonical migration filename.
+
+-def connect() -> sqlite3.Connection:
+-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+-    con = sqlite3.connect(DB_PATH)
+-    con.row_factory = sqlite3.Row
+-    con.execute("PRAGMA journal_mode=WAL;")
+-    con.execute("PRAGMA foreign_keys=ON;")
+-    return con
++    Raises:
++        ValueError: if the filename does not match the canonical pattern.
++    """
++    m = _MIGRATION_RE.match(fname)
++    if m is None:
++        raise ValueError(
++            f"Invalid migration filename (expected 'V###__name.sql'): {fname!r}"
++        )
++    return int(m.group(1))
+
+
+-def _init_migrations_table(con: sqlite3.Connection):
+-    con.execute(
+-        """
+-        CREATE TABLE IF NOT EXISTS schema_migrations (
+-            version TEXT PRIMARY KEY,
+-            applied_ts TEXT NOT NULL
+-        );
+-        """
+-    )
+-    con.commit()
++def _discover_migrations() -> List[Path]:
++    """Return a sorted list of valid migration files by version."""
++    if not MIGRATIONS_DIR.is_dir():
++        return []
++    candidates = list(MIGRATIONS_DIR.glob("V*.sql"))
++    # Keep only files that match the canonical pattern
++    valid = [p for p in candidates if _MIGRATION_RE.match(p.name) is not None]
++    # Sort by parsed version
++    valid.sort(key=lambda p: _parse_version_from_name(p.name))
++    return valid
+
+
+-def get_applied_migrations(con: sqlite3.Connection) -> set[str]:
+-    cursor = con.execute("SELECT version FROM schema_migrations")
+-    return {row["version"] for row in cursor.fetchall()}
++def get_db_version(con: sqlite3.Connection) -> int:
++    """Get the current schema version from the database."""
++    try:
++        cur = con.execute("SELECT version FROM schema_version")
++        row = cur.fetchone()
++        return row[0] if row else 0
++    except sqlite3.OperationalError:
++        # schema_version table doesn't exist yet
++        return 0
+
+
+-def get_pending_migrations() -> list[Path]:
+-    if not MIGRATIONS_DIR.exists():
+-        return []
+-    # Get all SQL files in the migrations directory, sorted lexically
+-    return sorted(MIGRATIONS_DIR.glob("V*.sql"))
+-
+-
+-def apply_migration(con: sqlite3.Connection, migration_file: Path):
+-    version = migration_file.stem  # e.g., V001__initial_schema
+-    applied_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+-
+-    LOG.info("Applying migration: %s", version)
+-    with open(migration_file, "r", encoding="utf-8") as f:
+-        con.executescript(f.read())
+-
+-    con.execute(
+-        "INSERT INTO schema_migrations (version, applied_ts) VALUES (?, ?)",
+-        (version, applied_ts),
+-    )
+-    con.commit()
+-    LOG.info("DB_MIGRATION_APPLIED: Migration %s applied successfully.", version)
+-
+-
+-def main():
+-    parser = argparse.ArgumentParser(description="TRUSTINT Database Migration Tool")
+-    parser.add_argument(
+-        "--plan", action="store_true", help="Show migration plan without applying."
+-    )
+-    parser.add_argument(
+-        "--apply", action="store_true", help="Apply pending migrations."
+-    )
+-    args = parser.parse_args()
+-
+-    if not args.plan and not args.apply:
+-        parser.print_help()
++def set_db_version(con: sqlite3.Connection, version: int) -> None:
++    """Set the schema version in the database."""
++    con.execute("UPDATE schema_version SET version = ?", (version,))
++
++
++def run_migrations(db_path: Path, target_version: int | None = None) -> None:
++    """Scan migrations directory and apply pending migrations."""
++    LOG.info("Starting database migration process...")
++
++    migration_files = _discover_migrations()
++    if not migration_files:
++        LOG.warning("No migration files found at %s. Nothing to do.", MIGRATIONS_DIR)
+         return
+
+-    with connect() as con:
+-        _init_migrations_table(con)
+-        applied_migrations = get_applied_migrations(con)
+-        pending_migrations = get_pending_migrations()
+-
+-        migrations_to_run = []
+-        for migration_file in pending_migrations:
+-            version = migration_file.stem
+-            if version not in applied_migrations:
+-                migrations_to_run.append(migration_file)
+-            else:
+-                LOG.info("DB_MIGRATION_SKIPPED: Migration %s already applied.", version)
+-
+-        if not migrations_to_run:
+-            LOG.info("No pending migrations.")
+-            return
++    with sqlite3.connect(db_path) as con:
++        current_version = get_db_version(con)
++        LOG.info("Current DB version: %d", current_version)
+
+-        LOG.info(
+-            "DB_MIGRATION_PLAN: Found %d pending migrations.", len(migrations_to_run)
+-        )
+-        for migration_file in migrations_to_run:
+-            LOG.info("  - %s", migration_file.name)
++        # Determine effective target version
++        if target_version is None:
++            # Default to the latest version found among valid files
++            effective_target = _parse_version_from_name(migration_files[-1].name)
++        else:
++            effective_target = target_version
+
+-        if args.apply:
+-            for migration_file in migrations_to_run:
+-                apply_migration(con, migration_file)
+-            LOG.info("All pending migrations applied.")
+-        elif args.plan:
+-            LOG.info("Run with --apply to apply these migrations.")
++        LOG.info("Target DB version: %d", effective_target)
+
++        if current_version >= effective_target:
++            LOG.info(
++                "Database is already at or beyond the target version. No migration needed."
++            )
++            return
+
+-if __name__ == "__main__":
+-    main()
++        applied_count = 0
++        for migration_file in migration_files:
++            version = _parse_version_from_name(migration_file.name)
++            if current_version < version <= effective_target:
++                LOG.info("Applying migration %s...", migration_file.name)
++
++                # Execute the migration script
++                sql_script = migration_file.read_text(encoding="utf-8")
++                con.executescript(sql_script)
++
++                # Update the schema version
++                set_db_version(con, version)
++
++                # Log provenance
++                event = {
++                    "type": "MIGRATION_APPLY",
++                    "version": version,
++                    "script": migration_file.name,
++                    "sha256": sha256_file(migration_file),
++                }
++                append_event(event)
++
++                LOG.info(
++                    "Successfully applied version %d and logged provenance event.",
++                    version,
++                )
++                current_version = version
++                applied_count += 1
++
++        con.commit()
++
++    if applied_count > 0:
++        LOG.info("Migration process complete. Applied %d migration(s).", applied_count)
++    else:
++        LOG.info("No new migrations to apply.")
+diff --git a/scripts/trustint.py b/scripts/trustint.py
+index 9658944..fb7a02e 100755
+--- a/scripts/trustint.py
++++ b/scripts/trustint.py
+@@ -1,7 +1,10 @@
++import shutil
+ import time
++import uuid
+ from pathlib import Path
+
+ import click
++import yaml
+ from watchdog.events import FileSystemEventHandler
+ from watchdog.observers import Observer
+
+@@ -9,15 +12,198 @@ from core.lattice import validate_all
+ from core.matrices import export_csv, export_jsonl, export_markdown, write_checksums
+ from core.substrate import connect, ingest_from_config, init_db
+ from utils.logger import get_logger
++from utils.provenance import append_event, sha256_file
+
+ LOG = get_logger("trustint")
+
+ DEFAULT_DB_PATH = Path("vault/trustint.db")
++POLICY_PATH = Path("config/intake.yaml")
++RAW_VAULT_PATH = Path("vault/raw")
++QUARANTINE_PATH = Path("vault/quarantine")
++
++
++class InboxHandler(FileSystemEventHandler):
++    def __init__(
++        self, db_path: Path, policy: dict, raw_vault_path: Path, quarantine_path: Path
++    ):
++        self.db_path = db_path
++        self.policy = policy
++        self.raw_vault_path = raw_vault_path
++        self.quarantine_path = quarantine_path
++        self.raw_vault_path.mkdir(exist_ok=True)
++        self.quarantine_path.mkdir(exist_ok=True)
++
++    def on_created(self, event):
++        if event.is_directory:
++            return
++        self._process_file(Path(event.src_path))
++
++    def _process_file(self, path: Path):
++        if not path.exists():
++            return
++        LOG.info(f"INBOX_DETECT: New file detected: {path}")
++        append_event({"event": "INBOX_DETECT", "src": str(path)})
++
++        try:
++            file_hash = sha256_file(path)
++            append_event(
++                {"event": "INBOX_CHECKSUM", "src": str(path), "sha256": file_hash}
++            )
++
++            with connect(self.db_path) as con:
++                res = con.execute(
++                    "SELECT 1 FROM inbox_log WHERE sha256 = ?", (file_hash,)
++                ).fetchone()
++                if res:
++                    LOG.warning(
++                        f"INBOX_DUPLICATE: File {path} with hash {file_hash} is a duplicate."
++                    )
++                    append_event(
++                        {
++                            "event": "INBOX_DUPLICATE",
++                            "src": str(path),
++                            "sha256": file_hash,
++                        }
++                    )
++                    con.execute(
++                        """
++                        INSERT INTO inbox_log (sha256, src, size_bytes, file_ext, policy_id, decision)
++                        VALUES (?, ?, ?, ?, ?, 'DUPLICATE')
++                        """,
++                        (
++                            file_hash,
++                            str(path),
++                            path.stat().st_size,
++                            path.suffix.lower(),
++                            "v1.0",
++                        ),
++                    )
++                    return
++
++            size_bytes = path.stat().st_size
++            file_ext = path.suffix.lower()
++
++            if file_ext not in self.policy["rules"]["allowed_extensions"]:
++                self._reject_file(path, file_hash, "E001", "Disallowed file extension")
++                return
++
++            if size_bytes > self.policy["rules"]["max_size_bytes"]:
++                self._reject_file(path, file_hash, "E002", "File size exceeds limit")
++                return
++
++            self._accept_file(path, file_hash)
++
++        except Exception as e:
++            LOG.error(f"Failed to process file {path}: {e}")
++            self._reject_file(path, "unknown", "E004", f"Processing error: {e}")
++
++    def _accept_file(self, path: Path, file_hash: str):
++        LOG.info(f"INBOX_ACCEPT: File {path} accepted.")
++        append_event({"event": "INBOX_ACCEPT", "src": str(path), "sha256": file_hash})
++
++        size_bytes = path.stat().st_size
++        target_path = self.raw_vault_path / f"{file_hash}{path.suffix.lower()}"
++        shutil.move(str(path), str(target_path))
++        LOG.info(f"INBOX_MOVE_RAW: Moved {path} to {target_path}")
++        append_event(
++            {
++                "event": "INBOX_MOVE_RAW",
++                "src": str(path),
++                "dest": str(target_path),
++                "sha256": file_hash,
++            }
++        )
++
++        with connect(self.db_path) as con:
++            con.execute(
++                """
++                INSERT INTO inbox_log (sha256, src, size_bytes, file_ext, policy_id, decision)
++                VALUES (?, ?, ?, ?, ?, 'ACCEPT')
++                """,
++                (
++                    file_hash,
++                    str(path),
++                    size_bytes,
++                    path.suffix.lower(),
++                    "v1.0",
++                ),
++            )
++
++    def _reject_file(
++        self, path: Path, file_hash: str, reason_code: str, reason_text: str
++    ):
++        ticket_id = f"T{uuid.uuid4().hex[:8].upper()}"
++        LOG.warning(
++            f"INBOX_REJECT: File {path} rejected. Reason: {reason_text}. Ticket: {ticket_id}"
++        )
++        append_event(
++            {
++                "event": "INBOX_REJECT",
++                "src": str(path),
++                "sha256": file_hash,
++                "reason_code": reason_code,
++                "ticket_id": ticket_id,
++            }
++        )
++
++        size_bytes = path.stat().st_size
++        quarantine_dir = self.quarantine_path / ticket_id
++        quarantine_dir.mkdir(exist_ok=True)
++        shutil.move(str(path), quarantine_dir / path.name)
++        LOG.info(f"INBOX_MOVE_QUAR: Moved {path} to {quarantine_dir}")
++        append_event(
++            {
++                "event": "INBOX_MOVE_QUAR",
++                "src": str(path),
++                "dest": str(quarantine_dir),
++                "sha256": file_hash,
++                "ticket_id": ticket_id,
++            }
++        )
++
++        with connect(self.db_path) as con:
++            con.execute(
++                """
++                INSERT INTO quarantine_ticket (id, reason, sha256)
++                VALUES (?, ?, ?)
++                """,
++                (ticket_id, f"{reason_code}: {reason_text}", file_hash),
++            )
++            con.execute(
++                """
++                INSERT INTO inbox_log (sha256, src, size_bytes, file_ext, policy_id, decision, ticket_id)
++                VALUES (?, ?, ?, ?, ?, 'REJECT', ?)
++                """,
++                (
++                    file_hash,
++                    str(path),
++                    size_bytes,
++                    path.suffix.lower(),
++                    "v1.0",
++                    ticket_id,
++                ),
++            )
+
+
+ @click.group()
+-def cli():
++@click.option(
++    "--db",
++    "db_path",
++    default=DEFAULT_DB_PATH,
++    type=click.Path(path_type=Path),
++    help="Path to the database file.",
++)
++@click.option(
++    "--policy",
++    "policy_path",
++    default=POLICY_PATH,
++    type=click.Path(path_type=Path),
++    help="Path to the intake policy file.",
++)
++@click.pass_context
++def cli(ctx, db_path, policy_path):
+     """TRUSTINT Trust Intelligence Daemon"""
++    ctx.obj = {"DB_PATH": db_path, "POLICY_PATH": policy_path}
+
+
+ @cli.command()
+@@ -32,11 +218,13 @@ def validate():
+
+
+ @cli.command()
+-def ingest():
++@click.pass_context
++def ingest(ctx):
+     """Initialize the database and ingest all configuration files."""
+     try:
+-        init_db(DEFAULT_DB_PATH)
+-        ingest_from_config(DEFAULT_DB_PATH)
++        db_path = ctx.obj["DB_PATH"]
++        init_db(db_path)
++        ingest_from_config(db_path)
+         LOG.info("Ingestion successful.")
+     except Exception as e:
+         LOG.error(f"Ingestion failed: {e}")
+@@ -45,9 +233,11 @@ def ingest():
+
+ @cli.command()
+ @click.option("--pdf", is_flag=True, help="Export board report as PDF.")
+-def export(pdf):
++@click.pass_context
++def export(ctx, pdf):
+     """Export data to all formats."""
+     try:
++        db_path = ctx.obj["DB_PATH"]
+         paths = [export_jsonl(), export_csv(), export_markdown()]
+         if pdf:
+             from core.matrices import export_pdf
+@@ -56,11 +246,7 @@ def export(pdf):
+         write_checksums(paths)
+         LOG.info("Export successful.")
+
+-        # Perform WAL checkpoint
+-        with connect(DEFAULT_DB_PATH) as con:
+-            # (log_size, checkpointed_size) = con.execute("PRAGMA wal_checkpoint(NORMAL);").fetchone()
+-            # SQLite 3.11.0+ returns (log_size, checkpointed_size, frames_checkpointed, frames_wal)
+-            # We'll just log the result of the pragma call.
++        with connect(db_path) as con:
+             result = con.execute("PRAGMA wal_checkpoint(NORMAL);").fetchone()
+             LOG.info(
+                 "DB_CHECKPOINT_NORMAL: WAL checkpoint performed. Result: %s", result
+@@ -71,55 +257,40 @@ def export(pdf):
+         raise e
+
+
+-class ChangeHandler(FileSystemEventHandler):
+-    def __init__(self, commands, debounce_seconds=2):
+-        self.commands = commands
+-        self.debounce_seconds = debounce_seconds
+-        self.last_triggered = 0
++@cli.group()
++def run():
++    """Run daemon processes."""
+
+-    def on_any_event(self, event):
+-        if event.is_directory:
+-            return
+-        if time.time() - self.last_triggered > self.debounce_seconds:
+-            self.last_triggered = time.time()
+-            LOG.info(
+-                f"Detected change: {event.src_path}. Triggering commands: {self.commands}"
+-            )
+-            try:
+-                if "validate" in self.commands:
+-                    validate.callback()
+-                if "ingest" in self.commands:
+-                    ingest.callback()
+-                if "export" in self.commands:
+-                    export.callback()
+-                LOG.info("Commands executed successfully.")
+-            except Exception as e:
+-                LOG.error(f"Command execution failed: {e}")
+-                raise e
+
+-
+-@cli.command()
+-@click.option(
+-    "--watch",
+-    "watch_dir",
+-    required=True,
+-    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+-    help="Directory to watch for changes.",
++@run.command()
++@click.argument(
++    "inbox_dir",
++    type=click.Path(
++        exists=True, file_okay=False, dir_okay=True, readable=True, writable=True
++    ),
+ )
+-@click.option(
+-    "--on-change",
+-    "commands",
+-    required=True,
+-    help="Comma-separated list of commands to run on change (e.g., 'validate,ingest,export').",
+-)
+-def run(watch_dir, commands):
+-    """Run the TRUSTINT daemon in watch mode."""
+-    command_list = [c.strip() for c in commands.split(",")]
+-    event_handler = ChangeHandler(command_list)
++@click.pass_context
++def watch(ctx, inbox_dir):
++    """Watch the inbox directory for new files and process them."""
++    db_path = ctx.obj["DB_PATH"]
++    policy_path = ctx.obj["POLICY_PATH"]
++    if not policy_path.exists():
++        LOG.error(f"Policy file not found at: {policy_path}")
++        return
++
++    with open(policy_path, "r") as f:
++        policy = yaml.safe_load(f)
++
++    LOG.info(f"Starting inbox watcher on: {inbox_dir}")
++    handler = InboxHandler(db_path, policy, RAW_VAULT_PATH, QUARANTINE_PATH)
++
++    for item in Path(inbox_dir).iterdir():
++        if item.is_file():
++            handler._process_file(item)
++
+     observer = Observer()
+-    observer.schedule(event_handler, watch_dir, recursive=True)
++    observer.schedule(handler, inbox_dir, recursive=False)
+     observer.start()
+-    LOG.info(f"Watching directory: {watch_dir} for changes...")
+     try:
+         while True:
+             time.sleep(1)
+@@ -128,6 +299,130 @@ def run(watch_dir, commands):
+     observer.join()
+
+
++@cli.group()
++def quarantine():
++    """Manage quarantined files."""
++
++
++@quarantine.command("list")
++@click.pass_context
++def list_tickets(ctx):
++    """List all open quarantine tickets."""
++    with connect(ctx.obj["DB_PATH"]) as con:
++        res = con.execute(
++            "SELECT id, reason, created_at FROM quarantine_ticket WHERE resolved_at IS NULL ORDER BY created_at ASC"
++        ).fetchall()
++        if not res:
++            click.echo("No open quarantine tickets.")
++            return
++        for row in res:
++            click.echo(
++                f"Ticket ID: {row[0]}\n  Reason: {row[1]}\n  Created: {row[2]}\n"
++            )
++
++
++@quarantine.command("show")
++@click.argument("ticket_id")
++@click.pass_context
++def show_ticket(ctx, ticket_id):
++    """Show details for a specific quarantine ticket."""
++    with connect(ctx.obj["DB_PATH"]) as con:
++        res = con.execute(
++            "SELECT * FROM quarantine_ticket WHERE id = ?", (ticket_id,)
++        ).fetchone()
++        if not res:
++            click.echo(f"Ticket {ticket_id} not found.")
++            return
++
++        res_inbox = con.execute(
++            "SELECT * FROM inbox_log WHERE ticket_id = ?", (ticket_id,)
++        ).fetchone()
++
++        click.echo(f"Ticket Details ({ticket_id}):")
++        click.echo(f"  Reason:     {res['reason']}")
++        click.echo(f"  SHA256:     {res['sha256']}")
++        click.echo(f"  Created:    {res['created_at']}")
++        click.echo(f"  Resolved:   {res['resolved_at'] or 'N/A'}")
++        click.echo(f"  Note:       {res['note'] or 'N/A'}")
++        if res_inbox:
++            click.echo("\n  Original File Info:")
++            click.echo(f"    Source:      {res_inbox['src']}")
++            click.echo(f"    Size (bytes):{res_inbox['size_bytes']}")
++            click.echo(f"    MIME Type:   {res_inbox['mime_type']}")
++            click.echo(f"    Extension:   {res_inbox['file_ext']}")
++
++
++@quarantine.command("resolve")
++@click.argument("ticket_id")
++@click.option("--note", required=True, help="A note explaining the resolution.")
++@click.pass_context
++def resolve_ticket(ctx, ticket_id, note):
++    """Resolve a quarantine ticket."""
++    with connect(ctx.obj["DB_PATH"]) as con:
++        res = con.execute(
++            "SELECT id FROM quarantine_ticket WHERE id = ? AND resolved_at IS NULL",
++            (ticket_id,),
++        ).fetchone()
++        if not res:
++            click.echo(f"Open ticket {ticket_id} not found.")
++            return
++
++        resolved_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
++        con.execute(
++            "UPDATE quarantine_ticket SET resolved_at = ?, note = ? WHERE id = ?",
++            (resolved_at, note, ticket_id),
++        )
++
++        event = {
++            "event": "QUARANTINE_RESOLVE",
++            "ticket_id": ticket_id,
++            "resolved_at": resolved_at,
++            "note": note,
++        }
++        append_event(event)
++        click.echo(f"Ticket {ticket_id} resolved.")
++
++
++@cli.group()
++def inbox():
++    """Interact with the inbox."""
++
++
++@inbox.command("status")
++@click.pass_context
++def inbox_status(ctx):
++    """Show the status of the inbox."""
++    with connect(ctx.obj["DB_PATH"]) as con:
++        counts = con.execute(
++            """
++            SELECT
++                decision,
++                COUNT(*)
++            FROM inbox_log
++            GROUP BY decision
++        """
++        ).fetchall()
++
++        oldest_ticket = con.execute(
++            """
++            SELECT id, created_at
++            FROM quarantine_ticket
++            WHERE resolved_at IS NULL
++            ORDER BY created_at ASC
++            LIMIT 1
++        """
++        ).fetchone()
++
++        click.echo("Inbox Status:")
++        for decision, count in counts:
++            click.echo(f"  {decision:<10}: {count}")
++
++        if oldest_ticket:
++            click.echo("\nOldest Unresolved Ticket:")
++            click.echo(f"  ID: {oldest_ticket['id']}")
++            click.echo(f"  Created: {oldest_ticket['created_at']}")
++
++
+ @cli.command()
+ @click.option(
+     "--scope",
+@@ -136,26 +431,23 @@ def run(watch_dir, commands):
+     help="Scope of the search.",
+ )
+ @click.argument("query")
+-def search(scope: str, query: str):
++@click.pass_context
++def search(ctx, scope, query):
+     """Search the database using FTS5."""
+     from core.substrate import search_fts
+
+     try:
+-        results = search_fts(DEFAULT_DB_PATH, query, scope)
++        results = search_fts(ctx.obj["DB_PATH"], query, scope)
+         if not results:
+             LOG.info("No results found.")
+             return
+
+-        # Simple table output
+-        # Determine column widths
+         w_scope = max(len(r["scope"]) for r in results)
+         w_key = max(len(r["key"]) for r in results)
+
+-        # Header
+         click.echo(f"{'SCOPE':<{w_scope}} {'KEY':<{w_key}} {'CONTENT'}")
+-        click.echo(f"{ '='*w_scope} {'='*w_key} {'='*40}")
++        click.echo(f"{'='*w_scope} {'='*w_key} {'='*40}")
+
+-        # Rows
+         for r in results:
+             content = r["content"].replace("\n", " ").strip()
+             if len(content) > 70:
+@@ -167,5 +459,19 @@ def search(scope: str, query: str):
+         raise e
+
+
++@cli.command()
++@click.option("--target", type=int, help="Migrate to a specific version.")
++@click.pass_context
++def migrate(ctx, target):
++    """Run database migrations."""
++    from scripts.migrate import run_migrations
++
++    try:
++        run_migrations(ctx.obj["DB_PATH"], target_version=target)
++    except Exception as e:
++        LOG.error(f"Migration failed: {e}")
++        raise e
++
++
+ if __name__ == "__main__":
+     cli()

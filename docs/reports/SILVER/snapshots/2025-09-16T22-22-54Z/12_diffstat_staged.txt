@@ -1,0 +1,7 @@
+ .gitignore               |   1 +
+ tests/conftest.py        |  52 +++++++++++++++++++---
+ tests/test_coherence.py  |  89 ++++++++++++++++++++++++++++++++++++++
+ tests/test_inbox.py      | 109 +++++++++++++++++++++++++++++++++++++++++++++++
+ tests/test_migrations.py |  96 +++++++++++++++++++++++++++++++++++++++++
+ tests/test_quarantine.py | 108 ++++++++++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 450 insertions(+), 5 deletions(-)

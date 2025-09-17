@@ -1,0 +1,7 @@
+bda53a3 ⬡🥈 cli: inbox WORM + quarantine lifecycle; intake policy via config/intake.yaml
+eb36a88 ⬡🥈 migrations: V002 RBAC, V003 inbox/quarantine + migrate runner updates; reference schema snapshot
+e947f47 ⬡🥈 trustint: .gitignore — runtime state & caches policy (vault/dist ignored, keepers allowed)
+211aca5 ⬡🥈 trustint: add .gitattributes (LF normalize, binary vault/dist, export-ignore)
+5c0e5dd ⬡🥉 Hygiene: drop egg-info from repo (build artifact)
+226df0b ⬡🥉 CI: add dev tools lane (ruff/mypy/pytest)
+1fb9594 ⬡🥉 Bronze Gate: Embryo born — deterministic paths, WAL+FK, explicit db_path, idempotent ingest, tests 9/9
