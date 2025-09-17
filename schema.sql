@@ -63,3 +63,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search_idx USING fts5(
   content,                           -- textual body
   tokenize='unicode61 remove_diacritics 2'
 );
+
+-- A table to track the current schema version of the database.
+CREATE TABLE IF NOT EXISTS schema_version (
+  version INTEGER NOT NULL UNIQUE
+);
+
+-- The base schema is version 1.
+INSERT OR IGNORE INTO schema_version (version) VALUES (1);

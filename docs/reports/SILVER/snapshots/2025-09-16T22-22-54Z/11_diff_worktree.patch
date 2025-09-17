@@ -1,0 +1,808 @@
+diff --git a/.gitignore b/.gitignore
+index ce8db76..b0043d0 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -74,3 +74,4 @@ vault/trusts/**
+ build/
+ dist/
+ pip-wheel-metadata/
++events.jsonl
+diff --git a/.ruff.toml b/.ruff.toml
+index afe2da5..8bde67d 100644
+--- a/.ruff.toml
++++ b/.ruff.toml
+@@ -1,3 +1,15 @@
++# Global (non-lint) settings stay top-level
+ line-length = 100
+ target-version = "py312"
+-extend-select = ["I","B","C4","PIE","Q","RUF"]
++
++[lint]
++# Move this from top-level -> here to silence the deprecation
++extend-select = ["I", "B", "C4", "PIE", "Q", "RUF"]
++# If you want to ignore E402 everywhere, add it here; otherwise use per-file below
++# ignore = ["E402"]
++
++[lint.per-file-ignores]
++# Env-before-imports is intentional here; also prevent isort reordering
++"tests/conftest.py" = ["E402", "I001"]
++# If test_coherence also does env-before-imports, keep E402 suppressed there too
++"tests/test_coherence.py" = ["E402"]
+diff --git a/README.md b/README.md
+index b69f51f..dfdddbb 100644
+--- a/README.md
++++ b/README.md
+@@ -88,22 +88,30 @@ Future (Silver → Gold → Diamond): simulation matrices, drone telemetry inges
+ ---
+
+ ## ⚙️ Quickstart (Bronze MVP, deterministic — no LLMs)
+-    # 0) Create/activate venv and install deps
+-    pip install -r requirements.txt
++<!-- usage:start -->
++```bash
++# 1) Ensure DB is migrated to the latest version
++python -m scripts.trustint --db vault/trustint.db --policy config/intake.yaml migrate
+
+-    # 1) Validate + Ingest (YAML → SQLite + FTS + ledger)
+-    python scripts/run_lattice.py
++# 2) Run the daemon to watch the inbox
++python -m scripts.trustint --db vault/trustint.db --policy config/intake.yaml run watch inbox/
+
+-    # 2) Export (JSONL/CSV/Markdown) + checksums
+-    python scripts/run_matrix.py
++# 3) Manage quarantined files
++python -m scripts.trustint --db vault/trustint.db --policy config/intake.yaml quarantine list
++python -m scripts.trustint --db vault/trustint.db --policy config/intake.yaml quarantine show <ticket_id>
++python -m scripts.trustint --db vault/trustint.db --policy config/intake.yaml quarantine resolve <ticket_id> --note "Resolution note"
++```
++<!-- usage:end -->
+
+-    # 3) Tests (roundtrip sanity)
+-    pytest -q
++---
+
+-    # 4) Package (Bronze artifact + rollback integrity)
+-    cd dist
+-    tar -czf trustint-bronze-v0.1.tar.gz *.md *.csv *.jsonl SHA256SUMS
+-    sha256sum trustint-bronze-v0.1.tar.gz > trustint-bronze-v0.1.sha256
++## Latest Progress
++<!-- progress:start -->
++### 2025-09-16T15:24:17+1200 — main@5c0e5dd
++- Tests: 14/14 passed in 29.90s (failed: 0)
++- Ops: ingest 38.78s, export 10.79s, chain-verify 9.42s, checksums 10.92s
++- Status: OK
++<!-- progress:end -->
+
+ ---
+
+diff --git a/scripts/migrate.py b/scripts/migrate.py
+index 173ab62..ad26c2d 100644
+--- a/scripts/migrate.py
++++ b/scripts/migrate.py
+@@ -43,20 +43,36 @@ def _discover_migrations() -> List[Path]:
+     return valid
+
+
++def _ensure_schema_version(con: sqlite3.Connection) -> None:
++    """Create and seed the schema_version table if it doesn't exist."""
++    con.execute(
++        """CREATE TABLE IF NOT EXISTS schema_version (
++            version INTEGER NOT NULL
++        );"""
++    )
++    con.execute(
++        "INSERT INTO schema_version (version) SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM schema_version);"
++    )
++
++
+ def get_db_version(con: sqlite3.Connection) -> int:
+     """Get the current schema version from the database."""
++    _ensure_schema_version(con)
+     try:
+         cur = con.execute("SELECT version FROM schema_version")
+         row = cur.fetchone()
+         return row[0] if row else 0
+     except sqlite3.OperationalError:
+-        # schema_version table doesn't exist yet
++        # This should not be reached if _ensure_schema_version is correct
+         return 0
+
+
+ def set_db_version(con: sqlite3.Connection, version: int) -> None:
+-    """Set the schema version in the database."""
+-    con.execute("UPDATE schema_version SET version = ?", (version,))
++    """Set the schema version in the database, inserting if needed."""
++    _ensure_schema_version(con)
++    cur = con.execute("UPDATE schema_version SET version = ?", (version,))
++    if cur.rowcount == 0:
++        con.execute("INSERT INTO schema_version (version) VALUES (?)", (version,))
+
+
+ def run_migrations(db_path: Path, target_version: int | None = None) -> None:
+@@ -69,6 +85,7 @@ def run_migrations(db_path: Path, target_version: int | None = None) -> None:
+         return
+
+     with sqlite3.connect(db_path) as con:
++        _ensure_schema_version(con)
+         current_version = get_db_version(con)
+         LOG.info("Current DB version: %d", current_version)
+
+diff --git a/scripts/trustint.py b/scripts/trustint.py
+index fb7a02e..b2fea4f 100755
+--- a/scripts/trustint.py
++++ b/scripts/trustint.py
+@@ -373,19 +373,66 @@ def resolve_ticket(ctx, ticket_id, note):
+             (resolved_at, note, ticket_id),
+         )
+
+-        event = {
+-            "event": "QUARANTINE_RESOLVE",
+-            "ticket_id": ticket_id,
+-            "resolved_at": resolved_at,
+-            "note": note,
+-        }
+-        append_event(event)
++        append_event(
++            {
++                "event": "QUARANTINE_RESOLVE",
++                "ticket_id": ticket_id,
++                "note": note,
++            }
++        )
+         click.echo(f"Ticket {ticket_id} resolved.")
+
+
+-@cli.group()
+-def inbox():
+-    """Interact with the inbox."""
++@cli.group(invoke_without_command=True)
++@click.pass_context
++def inbox(ctx):
++    """
++    Interact with the inbox.
++
++    If invoked without a subcommand, perform a single-pass inbox processing:
++    - infer inbox_dir from the DB path (db_dir / 'inbox')
++    - load policy
++    - process each file once via InboxHandler._process_file
++    - print '{N} file(s) were quarantined'
++    """
++    if ctx.invoked_subcommand is not None:
++        return
++
++    db_path: Path = ctx.obj["DB_PATH"]
++    policy_path: Path = ctx.obj["POLICY_PATH"]
++
++    # Derive inbox directory from DB location: tests expect tests/vault/inbox
++    inbox_dir = db_path.parent / "inbox"
++
++    if not policy_path.exists():
++        LOG.error(f"Policy file not found at: {policy_path}")
++        click.get_current_context().exit(1)
++
++    # Load policy
++    with open(policy_path, "r") as f:
++        policy = yaml.safe_load(f)
++
++    # Pre-count open tickets
++    with connect(db_path) as con:
++        pre_cnt = con.execute(
++            "SELECT COUNT(*) FROM quarantine_ticket WHERE resolved_at IS NULL"
++        ).fetchone()[0]
++
++    # Process each file in the inferred inbox directory (if it exists)
++    if inbox_dir.exists() and inbox_dir.is_dir():
++        handler = InboxHandler(db_path, policy, RAW_VAULT_PATH, QUARANTINE_PATH)
++        for item in inbox_dir.iterdir():
++            if item.is_file():
++                handler._process_file(item)
++
++    # Post-count open tickets
++    with connect(db_path) as con:
++        post_cnt = con.execute(
++            "SELECT COUNT(*) FROM quarantine_ticket WHERE resolved_at IS NULL"
++        ).fetchone()[0]
++
++    delta = max(0, post_cnt - pre_cnt)
++    click.echo(f"{delta} file(s) were quarantined")
+
+
+ @inbox.command("status")
+diff --git a/tests/conftest.py b/tests/conftest.py
+index 3cb6ead..1205dee 100644
+--- a/tests/conftest.py
++++ b/tests/conftest.py
+@@ -1,7 +1,79 @@
+-# Ensure 'core' is importable when running pytest from repo root
+-import sys
++# tests/conftest.py
++# Pytest fixtures for TRUSTINT
++
++from __future__ import annotations
++
++import importlib
++import os
++import secrets
++import shutil
+ from pathlib import Path
++from typing import Iterator
++
++import pytest
++
++import utils.provenance as _prov
++from scripts.migrate import run_migrations
++
++# Set default ledger path for test runs BEFORE any other modules can import and cache it
++os.environ.setdefault("TRUSTINT_LEDGER_PATH", str(Path("tests/vault/events.jsonl")))
++importlib.reload(_prov)  # rebind LEDGER_PATH to the test path
++
++
++@pytest.fixture()
++def setup_teardown(monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
++    """
++    Creates a static test vault, runs migrations, and cleans up artifacts.
++    - Creates tests/vault/{inbox,quarantine,...}
++    - Seeds tests/vault/.hmac_key
++    - Runs DB migrations into tests/vault/trustint.db
++    - Cleans up DB files, ledger, and inbox/quarantine contents after tests.
++    """
++    root_dir = Path("tests")
++    vault_dir = root_dir / "vault"
++    db_path = vault_dir / "trustint.db"
++    inbox_dir = vault_dir / "inbox"
++    quarantine_dir = vault_dir / "quarantine"
++    # This path must match the one set in the environment variable for teardown to work
++    ledger_path = Path(os.environ["TRUSTINT_LEDGER_PATH"])
++
++    # Monkeypatch the default key path to use the test key
++    monkeypatch.setattr(_prov, "DEFAULT_KEY_PATH", vault_dir / ".hmac_key")
++
++    # Create vault structure
++    for sub in (
++        "raw",
++        "quarantine",
++        "assets",
++        "compliance",
++        "matrices",
++        "trusts",
++        "inbox",
++    ):
++        (vault_dir / sub).mkdir(parents=True, exist_ok=True)
++
++    # Seed HMAC key
++    (vault_dir / ".hmac_key").write_bytes(secrets.token_bytes(32))
++
++    # Run migrations
++    run_migrations(db_path)
++
++    yield root_dir
++
++    # Teardown
++    for file_path in (
++        db_path,
++        ledger_path,
++        db_path.with_suffix(".db-shm"),
++        db_path.with_suffix(".db-wal"),
++    ):
++        if file_path.exists():
++            file_path.unlink()
+
+-ROOT = Path(__file__).resolve().parents[1]
+-if str(ROOT) not in sys.path:
+-    sys.path.insert(0, str(ROOT))
++    for directory in (inbox_dir, quarantine_dir):
++        if directory.exists():
++            for item in directory.iterdir():
++                if item.is_dir():
++                    shutil.rmtree(item)
++                else:
++                    item.unlink()
+diff --git a/tests/test_coherence.py b/tests/test_coherence.py
+new file mode 100644
+index 0000000..d6a5dcd
+--- /dev/null
++++ b/tests/test_coherence.py
+@@ -0,0 +1,90 @@
++import hashlib
++import hmac
++import json
++from pathlib import Path
++
++import yaml
++from click.testing import CliRunner
++
++from core.substrate import connect
++from scripts.trustint import InboxHandler, cli
++from utils.provenance import LEDGER_PATH, _read_key
++
++# Use static paths as the fixture sets up a known environment
++TESTS_ROOT = Path("tests")
++TEST_VAULT_PATH = TESTS_ROOT / "vault"
++TEST_INBOX_PATH = TEST_VAULT_PATH / "inbox"
++TEST_DB_PATH = TEST_VAULT_PATH / "trustint.db"
++TEST_QUARANTINE_PATH = TEST_VAULT_PATH / "quarantine"
++TEST_RAW_PATH = TEST_VAULT_PATH / "raw"
++TEST_POLICY_PATH = Path("config") / "intake.yaml"
++
++
++def verify_chain(ledger_path: Path) -> bool:
++    key = _read_key()
++    prev_mac = ""
++    with open(ledger_path, "r") as f:
++        for line in f:
++            event = json.loads(line)
++            mac = event.pop("mac")
++            if event.get("prev") != prev_mac:
++                return False
++
++            msg = json.dumps(event, sort_keys=True, separators=(",", ":")).encode()
++            expected_mac = hmac.new(key, msg, hashlib.sha256).hexdigest()
++
++            if not hmac.compare_digest(mac, expected_mac):
++                return False
++
++            prev_mac = mac
++    return True
++
++
++def test_coherence(setup_teardown):
++    runner = CliRunner()
++
++    # 1. Create files
++    valid_file = TEST_INBOX_PATH / "coherence_valid.txt"
++    valid_file.write_text("This is a valid file for the coherence test.")
++
++    reject_file = TEST_INBOX_PATH / "coherence_reject.badext"
++    reject_file.write_text("This file will be quarantined.")
++
++    # 2. Process files directly
++    with open(TEST_POLICY_PATH, "r") as f:
++        policy = yaml.safe_load(f)
++
++    handler = InboxHandler(TEST_DB_PATH, policy, TEST_RAW_PATH, TEST_QUARANTINE_PATH)
++    handler._process_file(valid_file)
++    handler._process_file(reject_file)
++
++    # 3. Resolve ticket
++    with connect(TEST_DB_PATH) as con:
++        ticket_id = con.execute(
++            "SELECT id FROM quarantine_ticket WHERE resolved_at IS NULL"
++        ).fetchone()["id"]
++
++    result = runner.invoke(
++        cli,
++        [
++            "--db",
++            str(TEST_DB_PATH),
++            "--policy",
++            str(TEST_POLICY_PATH),
++            "quarantine",
++            "resolve",
++            ticket_id,
++            "--note",
++            "Coherence test resolution",
++        ],
++    )
++    assert result.exit_code == 0
++
++    # 4. Run export
++    result = runner.invoke(
++        cli, ["--db", str(TEST_DB_PATH), "--policy", str(TEST_POLICY_PATH), "export"]
++    )
++    assert result.exit_code == 0
++
++    # 5. Verify provenance chain
++    assert verify_chain(LEDGER_PATH), "Provenance chain verification failed"
+diff --git a/tests/test_inbox.py b/tests/test_inbox.py
+new file mode 100644
+index 0000000..95cb6b4
+--- /dev/null
++++ b/tests/test_inbox.py
+@@ -0,0 +1,109 @@
++import json
++import os
++import shutil
++from pathlib import Path
++
++import pytest
++import yaml
++from click.testing import CliRunner
++
++from core.substrate import connect, init_db
++from scripts.trustint import InboxHandler, cli
++from utils.provenance import LEDGER_PATH
++
++TEST_VAULT_PATH = Path("tests/vault")
++TEST_INBOX_PATH = TEST_VAULT_PATH / "inbox"
++TEST_DB_PATH = TEST_VAULT_PATH / "trustint.db"
++TEST_RAW_PATH = TEST_VAULT_PATH / "raw"
++TEST_QUARANTINE_PATH = TEST_VAULT_PATH / "quarantine"
++TEST_POLICY_PATH = Path("config/intake.yaml")
++
++
++@pytest.fixture(scope="function")
++def setup_teardown():
++    # Setup
++    if TEST_VAULT_PATH.exists():
++        shutil.rmtree(TEST_VAULT_PATH)
++    TEST_INBOX_PATH.mkdir(parents=True)
++    TEST_RAW_PATH.mkdir(parents=True)
++    TEST_QUARANTINE_PATH.mkdir(parents=True)
++    if LEDGER_PATH.exists():
++        os.remove(LEDGER_PATH)
++
++    assert TEST_POLICY_PATH.exists(), "Policy file must exist for tests"
++    with open(TEST_POLICY_PATH, "r") as f:
++        yaml.safe_load(f)
++
++    init_db(TEST_DB_PATH)
++    runner = CliRunner()
++    result = runner.invoke(
++        cli, ["--db", str(TEST_DB_PATH), "--policy", str(TEST_POLICY_PATH), "migrate"]
++    )
++    assert result.exit_code == 0, result.output
++
++    yield
++
++    # Teardown
++    shutil.rmtree(TEST_VAULT_PATH)
++    if LEDGER_PATH.exists():
++        os.remove(LEDGER_PATH)
++
++
++def test_inbox_processing(setup_teardown):
++    with open(TEST_POLICY_PATH, "r") as f:
++        policy = yaml.safe_load(f)
++
++    handler = InboxHandler(TEST_DB_PATH, policy, TEST_RAW_PATH, TEST_QUARANTINE_PATH)
++
++    # 1. Create and process files
++    valid_file = TEST_INBOX_PATH / "valid.txt"
++    valid_file.write_text("This is a valid file.")
++    handler._process_file(valid_file)
++
++    bad_ext_file = TEST_INBOX_PATH / "invalid.zip"
++    bad_ext_file.write_text("This file has a bad extension.")
++    handler._process_file(bad_ext_file)
++
++    oversize_file = TEST_INBOX_PATH / "oversize.txt"
++    oversize_file.write_text("a" * (policy["rules"]["max_size_bytes"] + 1))
++    handler._process_file(oversize_file)
++
++    # Process the valid file again to test duplication
++    valid_file_2 = TEST_INBOX_PATH / "valid2.txt"
++    valid_file_2.write_text("This is a valid file.")
++    handler._process_file(valid_file_2)
++
++    # 5. Assertions
++    with connect(TEST_DB_PATH) as con:
++        log_entries = con.execute("SELECT decision FROM inbox_log").fetchall()
++        decisions = [le["decision"] for le in log_entries]
++        assert len(decisions) == 4
++        assert decisions.count("ACCEPT") == 1
++        assert decisions.count("REJECT") == 2
++        assert decisions.count("DUPLICATE") == 1
++
++        tickets = con.execute("SELECT reason FROM quarantine_ticket").fetchall()
++        assert len(tickets) == 2
++        reasons = [t["reason"] for t in tickets]
++        assert any("E001" in r for r in reasons)
++        assert any("E002" in r for r in reasons)
++
++    assert len(list(TEST_RAW_PATH.glob("*"))) == 1
++    assert len(list(TEST_QUARANTINE_PATH.glob("*"))) == 2
++
++    events = LEDGER_PATH.read_text().splitlines()
++    event_types = []
++    for e in events:
++        try:
++            event_data = json.loads(e)
++            if "event" in event_data:
++                event_types.append(event_data["event"])
++        except json.JSONDecodeError:
++            pass
++    assert event_types.count("INBOX_DETECT") == 4
++    assert event_types.count("INBOX_CHECKSUM") == 4
++    assert event_types.count("INBOX_ACCEPT") == 1
++    assert event_types.count("INBOX_REJECT") == 2
++    assert event_types.count("INBOX_DUPLICATE") == 1
++    assert event_types.count("INBOX_MOVE_RAW") == 1
++    assert event_types.count("INBOX_MOVE_QUAR") == 2
+diff --git a/tests/test_migrations.py b/tests/test_migrations.py
+new file mode 100644
+index 0000000..1c89268
+--- /dev/null
++++ b/tests/test_migrations.py
+@@ -0,0 +1,101 @@
++# tests/test_migrations.py
++
++import importlib
++import json
++import sqlite3
++from pathlib import Path
++
++import pytest
++
++from scripts.migrate import run_migrations
++
++
++def test_migration_apply(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
++    """Test that a new migration is applied correctly."""
++    db_path = tmp_path / "test.db"
++    prov_path = tmp_path / "events.jsonl"
++    key_path = tmp_path / ".hmac_key"
++
++    # 1. Initialize a v1 database
++    from core.substrate import init_db
++
++    init_db(db_path)
++
++    # 2. Run the migration
++    # We need to patch the paths for provenance to use the temp dir
++    import utils.provenance
++
++    monkeypatch.setenv("TRUSTINT_LEDGER_PATH", str(prov_path))
++    monkeypatch.setattr(utils.provenance, "DEFAULT_KEY_PATH", key_path)
++    importlib.reload(utils.provenance)
++
++    run_migrations(db_path)
++
++    # 3. Verify the results
++    with sqlite3.connect(db_path) as con:
++        # Check that schema version is updated
++        version = con.execute("SELECT version FROM schema_version").fetchone()[0]
++        assert version == 3
++
++        # Check that new tables exist
++        tables = {
++            row[0]
++            for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")
++        }
++        assert "users" in tables
++        assert "role_permissions" in tables
++        assert "inbox_log" in tables
++        assert "quarantine_ticket" in tables
++
++    # Check that a provenance event was logged
++    assert prov_path.exists()
++    lines = prov_path.read_text(encoding="utf-8").strip().split("\n")
++    assert len(lines) == 2
++
++    event1 = json.loads(lines[0])
++    assert event1["type"] == "MIGRATION_APPLY"
++    assert event1["version"] == 2
++    assert event1["script"] == "V002__add_rbac_tables.sql"
++
++    event2 = json.loads(lines[1])
++    assert event2["type"] == "MIGRATION_APPLY"
++    assert event2["version"] == 3
++    assert event2["script"] == "V003__add_inbox_and_quarantine.sql"
++
++
++def test_migration_idempotency(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
++    """Test that re-running migrations does not cause drift."""
++    db_path = tmp_path / "test.db"
++    prov_path = tmp_path / "events.jsonl"
++    key_path = tmp_path / ".hmac_key"
++
++    # 1. Initialize and run migrations once
++    from core.substrate import init_db
++
++    init_db(db_path)
++
++    import utils.provenance
++
++    monkeypatch.setenv("TRUSTINT_LEDGER_PATH", str(prov_path))
++    monkeypatch.setattr(utils.provenance, "DEFAULT_KEY_PATH", key_path)
++    importlib.reload(utils.provenance)
++
++    run_migrations(db_path)
++
++    # Get the state after the first run
++    lines_after_first_run = prov_path.read_text(encoding="utf-8").strip().split("\n")
++    assert len(lines_after_first_run) == 2
++
++    # 2. Run migrations again
++    run_migrations(db_path)
++
++    # 3. Verify no changes occurred
++    with sqlite3.connect(db_path) as con:
++        # Version should still be 3
++        version = con.execute("SELECT version FROM schema_version").fetchone()[0]
++        assert version == 3
++
++    # No new provenance events should be logged
++    lines_after_second_run = prov_path.read_text(encoding="utf-8").strip().split("\n")
++    assert len(lines_after_second_run) == 2
++    assert lines_after_first_run == lines_after_second_run
+diff --git a/tests/test_quarantine.py b/tests/test_quarantine.py
+new file mode 100644
+index 0000000..a89f40c
+--- /dev/null
++++ b/tests/test_quarantine.py
+@@ -0,0 +1,125 @@
++from pathlib import Path
++
++from click.testing import CliRunner
++
++from core.substrate import connect
++from scripts.trustint import cli
++from utils.provenance import LEDGER_PATH
++
++# Use static paths as the fixture sets up a known environment
++TESTS_ROOT = Path("tests")
++TEST_VAULT_PATH = TESTS_ROOT / "vault"
++TEST_INBOX_PATH = TEST_VAULT_PATH / "inbox"
++TEST_DB_PATH = TEST_VAULT_PATH / "trustint.db"
++TEST_POLICY_PATH = Path("config") / "intake.yaml"
++
++
++def test_quarantine_workflow(setup_teardown):
++    runner = CliRunner()
++
++    # 1. Create a file that will be quarantined
++    bad_file = TEST_INBOX_PATH / "quarantine_me.badext"
++    bad_file.write_text("This file should be quarantined.")
++
++    # 2. Run inbox processing to trigger quarantine
++    result = runner.invoke(
++        cli, ["--db", str(TEST_DB_PATH), "--policy", str(TEST_POLICY_PATH), "inbox"]
++    )
++    assert result.exit_code == 0
++    assert "1 file(s) were quarantined" in result.output
++
++    # 3. Get ticket_id from the database
++    with connect(TEST_DB_PATH) as con:
++        res = con.execute("SELECT id FROM quarantine_ticket").fetchone()
++        assert res is not None
++        ticket_id = res["id"]
++
++    # 4. Test `quarantine list`
++    result = runner.invoke(
++        cli,
++        [
++            "--db",
++            str(TEST_DB_PATH),
++            "--policy",
++            str(TEST_POLICY_PATH),
++            "quarantine",
++            "list",
++        ],
++    )
++    assert result.exit_code == 0
++    assert ticket_id in result.output
++
++    # 5. Test `quarantine show`
++    result = runner.invoke(
++        cli,
++        [
++            "--db",
++            str(TEST_DB_PATH),
++            "--policy",
++            str(TEST_POLICY_PATH),
++            "quarantine",
++            "show",
++            ticket_id,
++        ],
++    )
++    assert result.exit_code == 0
++    assert ticket_id in result.output
++
++    # 6. Test `quarantine resolve`
++    note = "This is a test resolution."
++    result = runner.invoke(
++        cli,
++        [
++            "--db",
++            str(TEST_DB_PATH),
++            "--policy",
++            str(TEST_POLICY_PATH),
++            "quarantine",
++            "resolve",
++            ticket_id,
++            "--note",
++            note,
++        ],
++    )
++    assert result.exit_code == 0
++    assert f"Ticket {ticket_id} resolved." in result.output
++
++    # 7. Verify resolution in DB
++    with connect(TEST_DB_PATH) as con:
++        res = con.execute(
++            "SELECT resolved_at, note FROM quarantine_ticket WHERE id = ?", (ticket_id,)
++        ).fetchone()
++        assert res is not None
++        assert res["resolved_at"] is not None
++        assert res["note"] == note
++
++    # 8. Verify `quarantine list` is now empty
++    result = runner.invoke(
++        cli,
++        [
++            "--db",
++            str(TEST_DB_PATH),
++            "--policy",
++            str(TEST_POLICY_PATH),
++            "quarantine",
++            "list",
++        ],
++    )
++    assert result.exit_code == 0
++    assert "No open quarantine tickets." in result.output
++
++    # 9. Verify ledger event
++    print("\n--- DEBUG: test_quarantine_workflow ---")
++    print(f"LEDGER_PATH in test: {LEDGER_PATH.absolute()}")
++    if LEDGER_PATH.exists():
++        print("Ledger file exists. Content:")
++        print(LEDGER_PATH.read_text())
++    else:
++        print("Ledger file does NOT exist.")
++    print("--- END DEBUG ---\n")
++    events = LEDGER_PATH.read_text().splitlines()
++    resolve_events = [e for e in events if "QUARANTINE_RESOLVE" in e]
++    assert len(resolve_events) == 1
++    event_data = eval(resolve_events[0])
++    assert event_data["ticket_id"] == ticket_id
++    assert event_data["note"] == note
+diff --git a/utils/provenance.py b/utils/provenance.py
+index 262ade6..48f46ad 100644
+--- a/utils/provenance.py
++++ b/utils/provenance.py
+@@ -7,7 +7,13 @@ from pathlib import Path
+ from typing import Optional
+
+ DEFAULT_KEY_PATH = Path("vault/.hmac_key")
+-LEDGER_PATH = Path("vault/events.jsonl")
++
++
++def get_ledger_path() -> Path:
++    return Path(os.getenv("TRUSTINT_LEDGER_PATH", "vault/events.jsonl"))
++
++
++LEDGER_PATH = get_ledger_path()
+
+
+ def _read_key() -> bytes:
+@@ -36,14 +42,22 @@ def append_event(event: dict, key: Optional[bytes] = None) -> dict:
+     Append an event to the append-only ledger with an HMAC chain.
+     Returns the enriched event (with ts, prev, mac).
+     """
+-    LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
++    path = get_ledger_path()
++    path.parent.mkdir(parents=True, exist_ok=True)
+     key = key or _read_key()
+
+     prev_mac = ""
+-    if LEDGER_PATH.exists():
+-        *_, last = LEDGER_PATH.read_text(encoding="utf-8").splitlines() or [""]
+-        if last:
+-            prev_mac = json.loads(last).get("mac", "")
++    if path.exists() and path.stat().st_size > 0:
++        with path.open("rb") as f:
++            try:  # catch OSError in case of empty file
++                f.seek(-2, os.SEEK_END)
++                while f.read(1) != b"\n":
++                    f.seek(-2, os.SEEK_CUR)
++            except OSError:
++                f.seek(0)
++            last_line = f.readline().decode()
++            if last_line:
++                prev_mac = json.loads(last_line).get("mac", "")
+
+     enriched = {
+         **event,
+@@ -54,6 +68,10 @@ def append_event(event: dict, key: Optional[bytes] = None) -> dict:
+     mac = hmac.new(key, msg, hashlib.sha256).hexdigest()
+     enriched["mac"] = mac
+
+-    with open(LEDGER_PATH, "a", encoding="utf-8") as f:
+-        f.write(json.dumps(enriched, ensure_ascii=False) + "\n")
++    line = json.dumps(enriched, ensure_ascii=False)
++    with path.open("a", encoding="utf-8") as f:
++        f.write(line + "\n")
++        f.flush()
++        os.fsync(f.fileno())  # ensure visibility across processes
++
+     return enriched
