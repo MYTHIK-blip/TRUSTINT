@@ -31,6 +31,49 @@ def _parse_version_from_name(fname: str) -> int:
     return int(m.group(1))
 
 
+def ensure_schema_version_table(con: sqlite3.Connection) -> None:
+    """
+    Ensure schema_version exists with a single-row invariant:
+      id INTEGER PRIMARY KEY CHECK(id=1), version INTEGER NOT NULL.
+    If an older shape (version-only) exists, upgrade it in place.
+    """
+    tbl = con.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
+    ).fetchone()
+
+    if not tbl:
+        con.execute(
+            """
+            CREATE TABLE schema_version (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                version INTEGER NOT NULL
+            )
+        """
+        )
+        con.execute("INSERT INTO schema_version (id, version) VALUES (1, 0)")
+        return
+
+    cols = {row[1] for row in con.execute("PRAGMA table_info(schema_version)")}
+    if "id" in cols and "version" in cols:
+        con.execute("INSERT OR IGNORE INTO schema_version (id, version) VALUES (1, 0)")
+        return
+
+    v = con.execute("SELECT COALESCE(MAX(version), 0) FROM schema_version").fetchone()[
+        0
+    ]
+    con.execute("ALTER TABLE schema_version RENAME TO schema_version_old")
+    con.execute(
+        """
+        CREATE TABLE schema_version (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            version INTEGER NOT NULL
+        )
+    """
+    )
+    con.execute("INSERT INTO schema_version (id, version) VALUES (1, ?)", (v,))
+    con.execute("DROP TABLE schema_version_old")
+
+
 def _discover_migrations() -> List[Path]:
     """Return a sorted list of valid migration files by version."""
     if not MIGRATIONS_DIR.is_dir():
@@ -45,18 +88,16 @@ def _discover_migrations() -> List[Path]:
 
 def get_db_version(con: sqlite3.Connection) -> int:
     """Get the current schema version from the database."""
-    try:
-        cur = con.execute("SELECT version FROM schema_version")
-        row = cur.fetchone()
-        return row[0] if row else 0
-    except sqlite3.OperationalError:
-        # schema_version table doesn't exist yet
-        return 0
+    ensure_schema_version_table(con)
+    cur = con.execute("SELECT version FROM schema_version WHERE id = 1")
+    row = cur.fetchone()
+    return row[0] if row else 0
 
 
 def set_db_version(con: sqlite3.Connection, version: int) -> None:
-    """Set the schema version in the database."""
-    con.execute("UPDATE schema_version SET version = ?", (version,))
+    """Set the schema version in the database idempotently."""
+    ensure_schema_version_table(con)
+    con.execute("UPDATE schema_version SET version = ? WHERE id = 1", (version,))
 
 
 def run_migrations(db_path: Path, target_version: int | None = None) -> None:
