@@ -7,6 +7,7 @@ import sqlite3
 from pathlib import Path
 from typing import List
 
+from core.substrate import connect
 from utils.logger import get_logger
 from utils.provenance import append_event, sha256_file
 
@@ -109,7 +110,7 @@ def run_migrations(db_path: Path, target_version: int | None = None) -> None:
         LOG.warning("No migration files found at %s. Nothing to do.", MIGRATIONS_DIR)
         return
 
-    with sqlite3.connect(db_path) as con:
+    with connect(db_path) as con:
         current_version = get_db_version(con)
         LOG.info("Current DB version: %d", current_version)
 

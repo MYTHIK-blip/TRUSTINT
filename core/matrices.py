@@ -5,6 +5,7 @@ import json
 import sqlite3
 from pathlib import Path
 
+from core.substrate import connect
 from utils.logger import get_logger
 from utils.provenance import append_event, sha256_file
 
@@ -15,7 +16,7 @@ DIST.mkdir(exist_ok=True, parents=True)
 
 
 def _con() -> sqlite3.Connection:
-    con = sqlite3.connect(DB_PATH)
+    con = connect(DB_PATH)
     con.row_factory = sqlite3.Row
     return con
 

@@ -22,9 +22,10 @@ CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
 
 def connect(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(db_path)
+    con = sqlite3.connect(str(db_path), timeout=30.0)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL;")  # Set WAL mode immediately on connection
+    con.execute("PRAGMA foreign_keys=ON;")
     return con
 
 
