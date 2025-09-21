@@ -1,4 +1,7 @@
 import shutil
+import sqlite3
+import subprocess
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -471,6 +474,91 @@ def migrate(ctx, target):
     except Exception as e:
         LOG.error(f"Migration failed: {e}")
         raise e
+
+
+@cli.command()
+@click.pass_context
+def doctor(ctx):
+    """Perform read-only health checks on the system."""
+    db_path = ctx.obj["DB_PATH"]
+    results = {}
+    overall_success = True
+
+    click.echo("Performing system health checks...")
+
+    # 1. DB Pragmas Check
+    try:
+        with connect(db_path) as con:
+            # WAL mode check
+            cursor = con.execute("PRAGMA journal_mode;")
+            journal_mode = cursor.fetchone()[0].upper()
+            wal_success = journal_mode == "WAL"
+            results["DB Journal Mode (WAL)"] = (
+                "PASS" if wal_success else f"FAIL (Current: {journal_mode})"
+            )
+            if not wal_success:
+                overall_success = False
+
+            # Foreign Keys check
+            cursor = con.execute("PRAGMA foreign_keys;")
+            foreign_keys_on = cursor.fetchone()[0] == 1
+            fk_success = foreign_keys_on
+            results["DB Foreign Keys (ON)"] = (
+                "PASS" if fk_success else "FAIL (Current: OFF)"
+            )
+            if not fk_success:
+                overall_success = False
+    except Exception as e:
+        results["DB Pragmas Check"] = f"ERROR ({e})"
+        overall_success = False
+
+    # 2. FTS5 Availability Check
+    try:
+        with connect(db_path) as con:
+            con.execute(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS _test_fts USING fts5(content);"
+            )
+            con.execute("DROP TABLE IF EXISTS _test_fts;")
+        results["FTS5 Available"] = "PASS"
+    except sqlite3.OperationalError as e:
+        if "no such module: fts5" in str(e):
+            results["FTS5 Available"] = "FAIL (FTS5 module not found)"
+        else:
+            results["FTS5 Available"] = f"ERROR ({e})"
+        overall_success = False
+    except Exception as e:
+        results["FTS5 Available"] = f"ERROR ({e})"
+        overall_success = False
+
+    # 3. Provenance Chain Verification
+    try:
+        prov_cmd = [sys.executable, "scripts/prov_tools.py", "chain-verify"]
+        process = subprocess.run(prov_cmd, capture_output=True, text=True)
+        prov_success = process.returncode == 0
+        results["Provenance Chain Verify"] = (
+            "PASS" if prov_success else f"FAIL (Exit Code: {process.returncode})"
+        )
+        if not prov_success:
+            overall_success = False
+            if process.stdout:
+                click.echo(f"Provenance stdout: {process.stdout.strip()}")
+            if process.stderr:
+                click.echo(f"Provenance stderr: {process.stderr.strip()}")
+    except Exception as e:
+        results["Provenance Chain Verify"] = f"ERROR ({e})"
+        overall_success = False
+
+    click.echo("\n--- Health Check Summary ---")
+    for check, status in results.items():
+        click.echo(f"{check:<30}: {status}")
+    click.echo("----------------------------")
+
+    if overall_success:
+        click.echo("\nAll health checks passed successfully.")
+        sys.exit(0)
+    else:
+        click.echo("\nOne or more health checks failed.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

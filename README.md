@@ -179,6 +179,7 @@ Here's a comprehensive list of all commands and their functionalities implemente
 ### Utility Commands (via `trustint` CLI)
 - `trustint search --scope [scope] "query"`: Performs a full-text search across the database. Supported scopes include `trusts`, `roles`, `assets`, `obligations`, `filings`, or `all`.
 - `trustint run --watch [directory] --on-change [commands]`: Activates daemon mode, monitoring a specified directory for changes and automatically triggering a sequence of commands (e.g., `validate,ingest,export`).
+- `trustint doctor`: Performs read-only health checks on the database (WAL mode, foreign keys, FTS5 availability) and provenance chain integrity.
 
 ### Provenance Tools (via `scripts/prov_tools.py`)
 - `python scripts/prov_tools.py keygen`: Generates a new HMAC key for securing the provenance ledger.
