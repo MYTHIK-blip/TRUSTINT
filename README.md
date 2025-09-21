@@ -82,7 +82,7 @@ Future (Silver → Gold → Diamond): simulation matrices, drone telemetry inges
     ├── ADDENDUM.md       # provenance & collapse covenant
     ├── LICENSE-DOCS      # CC-BY-SA 4.0
     ├── requirements.txt  # pinned dependencies
-    ├── schema.sql        # SQLite schema (with FTS5)
+    # Schema is now governed by versioned files under migrations/ (see migrations/README.md).
     └── README.md
 
 ---
@@ -127,7 +127,7 @@ As an alternative to the individual `run_*.py` scripts, you can use the main `tr
 - Rule checks:
   - Each trust must have **≥1 trustee**.
   - **Air** assets must specify `jurisdiction` and bounded descriptor (e.g., “0–120m AGL”).
-- DB initialization from `schema.sql` (SQLite + FTS5).
+- DB initialization is now governed by versioned files under `migrations/` (see `migrations/README.md`). The legacy `schema.sql` can be found at `docs/legacy/schema.sql` for historical reference.
 - Ingest normalized entities into `vault/trustint.db`.
 - Append HMAC-chained event to `vault/events.jsonl`.
 

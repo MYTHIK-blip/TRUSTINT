@@ -24,7 +24,7 @@
 ?? mypy.ini
 ?? pyproject.toml
 ?? requirements.txt
-?? schema.sql
+Schema is governed by versioned files under migrations/ (see migrations/README.md).
 ?? scripts/
 ?? tests/
 ?? trustint.egg-info/

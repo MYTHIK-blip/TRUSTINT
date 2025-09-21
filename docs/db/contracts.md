@@ -27,7 +27,7 @@ The Full-Text Search (FTS5) virtual table (`search_idx`) is configured as **cont
 
 ## 4. Deterministic Row ID Discipline and Collision Assertion
 
-TRUSTINT enforces a **deterministic ingestion discipline** to ensure idempotency. While SQLite assigns an internal `rowid` by default, the system's idempotency and collision assertion rely on **explicit `UNIQUE` constraints** defined in the `schema.sql`.
+TRUSTINT enforces a **deterministic ingestion discipline** to ensure idempotency. While SQLite assigns an internal `rowid` by default, the system's idempotency and collision assertion rely on **explicit `UNIQUE` constraints**, now defined in the versioned migration files under `migrations/` (see `migrations/README.md`). The legacy `schema.sql` can be found at `docs/legacy/schema.sql` for historical reference.
 
 *   **Idempotency:** The ingestion process (`trustint ingest`) is designed to be idempotent. Re-running the ingestion with the same configuration data will result in the same database state, without creating duplicate records or altering existing valid data.
 *   **Collision Assertion:** Collisions are asserted via `UNIQUE` constraints on natural keys within the schema. For example, the `slug` column in the `trusts` table is `UNIQUE NOT NULL`. If an ingestion attempt tries to insert a trust with an already existing slug, the database will prevent the duplicate entry, ensuring data integrity. The ingestion logic handles these assertions gracefully, typically by ignoring or replacing existing records based on these unique identifiers.
