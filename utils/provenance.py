@@ -11,6 +11,10 @@ LEDGER_PATH = Path("vault/events.jsonl")
 
 
 def _read_key() -> bytes:
+    env_key = os.environ.get("TRUSTINT_HMAC_KEY")
+    if env_key:
+        return env_key.encode("utf-8")
+
     DEFAULT_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
     if not DEFAULT_KEY_PATH.exists():
         # deterministic but local—user should rotate/replace securely later

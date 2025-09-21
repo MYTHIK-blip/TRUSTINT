@@ -330,3 +330,9 @@ Comprehensive checks confirm the robust functionality of all components:
 - **Provenance:** The `vault/events.jsonl` ledger's integrity is verifiable via `prov_tools.py chain-verify`, demonstrating tamper detection.
 - **Backward Compatibility:** Original runner scripts (`scripts/run_lattice.py`, `scripts/run_matrix.py`) still function as expected.
 - **Utility Tools:** `prov_tools.py keygen` and `checksums` commands perform their intended operations.
+
+## 🗓 Release Notes
+
+### `v0.2.0-silver.1` - Pipeline Overview & Roadmap (2025-09-20T12-38-13Z)
+
+A comprehensive pipeline overview and enhancement roadmap has been generated, detailing the current system architecture, resolved issues (schema version idempotency), remaining gaps, and a strategic plan for future development. This report is available at `docs/reports/PIPELINE_OVERVIEW_2025-09-20T12-38-13Z.md`.
