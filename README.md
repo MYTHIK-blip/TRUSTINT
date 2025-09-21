@@ -75,7 +75,7 @@ Future (Silver → Gold → Diamond): simulation matrices, drone telemetry inges
     ├── scripts/          # run_lattice.py, run_matrix.py
     ├── utils/            # logger.py, provenance.py
     ├── vault/            # tamper-evident storage (db, events, artifacts)
-    ├── docs/             # ontology, playbook, governance
+
     ├── tests/            # pytest modules
     ├── dist/             # packaged exports + checksums
     ├── LICENSE           # AGPLv3
@@ -84,6 +84,27 @@ Future (Silver → Gold → Diamond): simulation matrices, drone telemetry inges
     ├── requirements.txt  # pinned dependencies
     # Schema is now governed by versioned files under migrations/ (see migrations/README.md).
     └── README.md
+
+---
+
+## 📚 Documentation
+
+This project's documentation is organized to provide comprehensive guidance on its architecture, operation, and policies.
+
+| Category      | Document                                                              | Description                                                                 |
+| :------------ | :-------------------------------------------------------------------- | :-------------------------------------------------------------------------- |
+| **Overview**  | [Documentation Home](docs/README.md)                                  | Entry point and map to all project documentation.                           |
+|               | [Architecture Overview](docs/architecture/overview.md)                | High-level system design, core components, and operational flow.            |
+| **CLI**       | [CLI Commands](docs/cli/commands.md)                                  | Detailed reference for all command-line interface verbs and options.        |
+| **Checks**    | [Doctor Checks](docs/checks/doctor.md)                                | Explanation of system health checks and their significance.                 |
+| **Database**  | [Database Migrations](docs/db/migrations.md)                          | Overview of schema evolution and migration scripts.                         |
+|               | [DB Contracts](docs/db/contracts.md)                                  | Details on database contracts and data integrity.                           |
+| **Operations**| [Inbox & Quarantine](docs/ops/inbox_quarantine.md)                    | Lifecycle of incoming files, policy enforcement, and quarantine management. |
+| **Policy**    | [Security Policy](docs/policy/SECURITY.md)                            | Guidelines on handling sensitive data, keys, and environment variables.     |
+|               | [CODEOWNERS](docs/policy/CODEOWNERS)                                  | Defines ownership for different parts of the codebase (if applicable).      |
+| **ADR**       | [Architectural Decision Records](docs/adr/README.md)                  | Rationale and context for key architectural decisions.                      |
+| **Reports**   | [Generated Reports](docs/reports/)                                    | Directory for system-generated reports and analyses.                        |
+| **Legacy**    | [Legacy Documentation](docs/legacy/)                                  | Older documentation or schema files maintained for historical reference.    |
 
 ---
 
@@ -104,6 +125,39 @@ Future (Silver → Gold → Diamond): simulation matrices, drone telemetry inges
     cd dist
     tar -czf trustint-bronze-v0.1.tar.gz *.md *.csv *.jsonl SHA256SUMS
     sha256sum trustint-bronze-v0.1.tar.gz > trustint-bronze-v0.1.sha256
+
+---
+
+## 🚀 First Run Guide
+
+To get TRUSTINT up and running for the first time, follow these steps:
+
+1.  **Set HMAC Key:** Ensure the `TRUSTINT_HMAC_KEY` environment variable is set. This key is crucial for the integrity of the provenance ledger. You can generate one using `python scripts/prov_tools.py keygen`.
+    ```bash
+    export TRUSTINT_HMAC_KEY=$(python scripts/prov_tools.py keygen)
+    # Or, for persistent local development, save it to vault/.hmac_key
+    python scripts/prov_tools.py keygen > vault/.hmac_key
+    ```
+2.  **Install Dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+3.  **Run Migrations:** Initialize the database schema.
+    ```bash
+    trustint migrate
+    ```
+4.  **Ingest Data:** Load configuration data from `config/*.yaml` files into the database.
+    ```bash
+    trustint ingest
+    ```
+5.  **Export Reports:** Generate various reports and checksums.
+    ```bash
+    trustint export
+    ```
+6.  **Verify System Health:** Run the doctor command to ensure everything is configured correctly.
+    ```bash
+    trustint doctor
+    ```
 
 ---
 
