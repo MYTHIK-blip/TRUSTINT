@@ -7,6 +7,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      TRUSTINT_HMAC_KEY: ${{ secrets.TRUSTINT_HMAC_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -25,6 +27,9 @@ jobs:
 
       - name: Type-check (mypy)
         run: mypy .
+
+      - name: Check TRUSTINT_HMAC_KEY
+        run: '[ -n "$TRUSTINT_HMAC_KEY" ] || (echo "Missing TRUSTINT_HMAC_KEY" && exit 1)'
 
       - name: Test (pytest)
         run: pytest -q
