@@ -13,7 +13,7 @@ from utils.provenance import append_event
 
 LOG = get_logger("substrate")
 
-SCHEMA_SQL = Path(__file__).resolve().parents[1] / "schema.sql"
+SCHEMA_SQL = Path(__file__).resolve().parents[1] / "docs" / "legacy" / "schema.sql"
 
 if not SCHEMA_SQL.exists():
     raise FileNotFoundError(f"schema.sql not found at {SCHEMA_SQL}")
