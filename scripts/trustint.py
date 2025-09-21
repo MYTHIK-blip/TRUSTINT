@@ -1,3 +1,4 @@
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -533,17 +534,79 @@ def doctor(ctx):
     # 3. Provenance Chain Verification
     try:
         prov_cmd = [sys.executable, "scripts/prov_tools.py", "chain-verify"]
+
+        # First run with current environment
         process = subprocess.run(prov_cmd, capture_output=True, text=True)
         prov_success = process.returncode == 0
+
+        provenance_status_suffix = ""
+
+        # If initial check fails and TRUSTINT_HMAC_KEY is set in the environment, attempt fallback
+        if not prov_success and os.environ.get("TRUSTINT_HMAC_KEY"):
+            hmac_key_file = Path("vault/.hmac_key")
+            if hmac_key_file.exists():
+                try:
+                    vault_hmac_key = hmac_key_file.read_text().strip()
+
+                    # Prepare environment for the second run with VAULT key
+                    env_for_second_run = os.environ.copy()
+                    env_for_second_run["TRUSTINT_HMAC_KEY"] = vault_hmac_key
+
+                    click.echo(
+                        "Initial provenance check failed with ENV key. Retrying with vault/.hmac_key..."
+                    )
+
+                    process_fallback = subprocess.run(
+                        prov_cmd, capture_output=True, text=True, env=env_for_second_run
+                    )
+
+                    if process_fallback.returncode == 0:
+                        prov_success = True
+                        provenance_status_suffix = (
+                            " (used VAULT key; ENV key mismatched)"
+                        )
+                    else:
+                        # Fallback also failed, show both outputs
+                        click.echo(
+                            "Fallback provenance check with vault/.hmac_key also failed."
+                        )
+                        if process_fallback.stdout:
+                            click.echo(
+                                f"Fallback Provenance stdout: {process_fallback.stdout.strip()}"
+                            )
+                        if process_fallback.stderr:
+                            click.echo(
+                                f"Fallback Provenance stderr: {process_fallback.stderr.strip()}"
+                            )
+                        provenance_status_suffix = (
+                            " (ENV key mismatched, VAULT key also failed)"
+                        )
+                except Exception as e:
+                    click.echo(f"Error reading vault/.hmac_key or during fallback: {e}")
+                    provenance_status_suffix = f" (Error with VAULT key fallback: {e})"
+            else:
+                provenance_status_suffix = (
+                    " (ENV key mismatched; vault/.hmac_key not found for fallback)"
+                )
+
         results["Provenance Chain Verify"] = (
             "PASS" if prov_success else f"FAIL (Exit Code: {process.returncode})"
-        )
+        ) + provenance_status_suffix
+
         if not prov_success:
             overall_success = False
-            if process.stdout:
+            # Only show initial stdout/stderr if fallback didn't succeed or wasn't attempted
+            if (
+                not provenance_status_suffix.startswith(" (used VAULT key")
+                and process.stdout
+            ):
                 click.echo(f"Provenance stdout: {process.stdout.strip()}")
-            if process.stderr:
+            if (
+                not provenance_status_suffix.startswith(" (used VAULT key")
+                and process.stderr
+            ):
                 click.echo(f"Provenance stderr: {process.stderr.strip()}")
+
     except Exception as e:
         results["Provenance Chain Verify"] = f"ERROR ({e})"
         overall_success = False
