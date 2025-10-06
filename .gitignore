@@ -74,3 +74,6 @@ vault/trusts/**
 build/
 dist/
 pip-wheel-metadata/
+
+# Local backups
+README.md.bak
