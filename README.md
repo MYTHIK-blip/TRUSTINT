@@ -1,9 +1,14 @@
 # 🕸 TRUSTINT — Trust Intelligence Daemon (TID)
 
 [![Gate: 🟤 Bronze v0.1](https://img.shields.io/badge/Gate-🟤%20Bronze%20v0.1-%23cd7f32)](https://github.com/MYTHIK-blip/TRUSTINT/releases/tag/bronze-gate-v0.1)
+[![Status: Embryo](https://img.shields.io/badge/Status-Embryo-lightgrey)]()
+[![Python: 3.12+](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/downloads/release/python-3120/)
+[![Code Style: Black](https://img.shields.io/badge/Code%20Style-Black-black)](https://github.com/psf/black)
+[![Types: Mypy](https://img.shields.io/badge/Types-Mypy-blue.svg)](http://mypy-lang.org/)
 [![License: AGPLv3](https://img.shields.io/badge/License-AGPLv3-blue.svg)](LICENSE)
 [![Docs License: CC BY-SA 4.0](https://img.shields.io/badge/Docs-CC--BY--SA%204.0-green)](LICENSE-DOCS)
-[![Status: Embryo](https://img.shields.io/badge/Status-Embryo-lightgrey)]()
+
+> TRUSTINT at Bronze is a **living covenant + working daemon**: Deterministic, legally shielded, provenance-enforced, and real-world applicable.
 
 ---
 
@@ -23,336 +28,134 @@ If referencing TRUSTINT in research or governance work, please cite as:
 
 ---
 
-## 🌐 Vision
-TRUSTINT is a **Trust Intelligence Architecture** — a covenantal system that models, manages, and preserves **assets, roles, laws, and compliance** across generations.
-It is not a trust itself, but a **Trust Intelligence Daemon (TID)**:
+## 💡 Key Concepts
 
-- 🏛 **Substrate (TIS)** — database + schema layer for codified trusts.
-- 🕸 **Lattice (TIL)** — governance validation and rule enforcement.
-- 🔢 **Matrices (TIM)** — exports, simulations, and board-ready reports.
+### 🌐 Vision
+TRUSTINT is a **Trust Intelligence Architecture** — a covenantal system that models, manages, and preserves **assets, roles, laws, and compliance** across generations. It is not a trust itself, but a **Trust Intelligence Daemon (TID)** composed of three core layers:
 
-Anchored in **NZ + Pacific jurisdictions** (extensible globally), TRUSTINT addresses:
-- Land & water sovereignty under compulsory acquisition.
-- Air sovereignty amid drones, surveillance, and intrusive reconnaissance.
-- Continuity of civic, cultural, and digital assets under collapse scenarios.
+- 🏛 **Substrate (TIS)** — The database and schema layer for codified trusts.
+- 🕸 **Lattice (TIL)** — The governance validation and rule enforcement engine.
+- 🔢 **Matrices (TIM)** — The system for exports, simulations, and board-ready reports.
 
----
-
-## 🎯 Purpose
+### 🎯 Purpose
 - Codify trust logic into **deterministic, auditable pipelines**.
 - Preserve **provenance** across every artifact, deed, and decision.
 - Validate roles, assets, and obligations against explicit **schemas + rule checks**.
 - Provide **tamper-evident vaults** and **exportable board reports**.
 - Enable **continuity under disruption** (public-domain fallback on systemic failure).
 
----
-
-## 🧬 Ethos
+### 🧬 Ethos
 - ✅ Integrity first — licenses + covenant before operations.
 - ✅ Provenance mandatory — signed commits, checksums, append-only ledger.
 - ✅ Idempotency — reproducible outputs; no silent black-boxing.
 - ✅ Continuity under collapse — defaults to public-domain accessibility.
 - ✅ Stewardship — multi-party, accountable governance.
-- ✅ Agents bound by covenant — AI derivatives must preserve attribution + context.
 
----
-
-## 🌍 Sovereignty Layers (LAW)
+### 🌍 Sovereignty Layers (LAW)
 TRUSTINT encodes **Land · Water · Air** domains:
-
 - **Land** — estates, whenua, tangible infrastructures.
 - **Water** — freshwater, coastal zones, rights of use & stewardship.
 - **Air** — privacy corridors, airspace easements, drone boundaries (0–120m AGL).
 
-Future (Silver → Gold → Diamond): simulation matrices, drone telemetry ingestion, jurisdictional overlays.
-
----
-
-## 📂 Repository Structure
-    TRUSTINT/
-    ├── config/           # trusts.yaml, roles.yaml, assets.yaml, laws.yaml
-    ├── core/             # substrate.py (DB ingest), lattice.py (validation), matrices.py (exports)
-    ├── scripts/          # run_lattice.py, run_matrix.py
-    ├── utils/            # logger.py, provenance.py
-    ├── vault/            # tamper-evident storage (db, events, artifacts)
-
-    ├── tests/            # pytest modules
-    ├── dist/             # packaged exports + checksums
-    ├── LICENSE           # AGPLv3
-    ├── ADDENDUM.md       # provenance & collapse covenant
-    ├── LICENSE-DOCS      # CC-BY-SA 4.0
-    ├── requirements.txt  # pinned dependencies
-    # Schema is now governed by versioned files under migrations/ (see migrations/README.md).
-    └── README.md
-
----
-
-## 📚 Documentation
-
-This project's documentation is organized to provide comprehensive guidance on its architecture, operation, and policies.
-
-| Category      | Document                                                              | Description                                                                 |
-| :------------ | :-------------------------------------------------------------------- | :-------------------------------------------------------------------------- |
-| **Overview**  | [Documentation Home](docs/README.md)                                  | Entry point and map to all project documentation.                           |
-|               | [Architecture Overview](docs/architecture/overview.md)                | High-level system design, core components, and operational flow.            |
-| **CLI**       | [CLI Commands](docs/cli/commands.md)                                  | Detailed reference for all command-line interface verbs and options.        |
-| **Checks**    | [Doctor Checks](docs/checks/doctor.md)                                | Explanation of system health checks and their significance.                 |
-| **Database**  | [Database Migrations](docs/db/migrations.md)                          | Overview of schema evolution and migration scripts.                         |
-|               | [DB Contracts](docs/db/contracts.md)                                  | Details on database contracts and data integrity.                           |
-| **Operations**| [Inbox & Quarantine](docs/ops/inbox_quarantine.md)                    | Lifecycle of incoming files, policy enforcement, and quarantine management. |
-| **Policy**    | [Security Policy](docs/policy/SECURITY.md)                            | Guidelines on handling sensitive data, keys, and environment variables.     |
-|               | [CODEOWNERS](docs/policy/CODEOWNERS)                                  | Defines ownership for different parts of the codebase (if applicable).      |
-| **ADR**       | [Architectural Decision Records](docs/adr/README.md)                  | Rationale and context for key architectural decisions.                      |
-| **Reports**   | [Generated Reports](docs/reports/)                                    | Directory for system-generated reports and analyses.                        |
-| **Legacy**    | [Legacy Documentation](docs/legacy/)                                  | Older documentation or schema files maintained for historical reference.    |
-
----
-
-## ⚙️ Quickstart (Bronze MVP, deterministic — no LLMs)
-    # 0) Create/activate venv and install deps
-    pip install -r requirements.txt
-
-    # 1) Validate + Ingest (YAML → SQLite + FTS + ledger)
-    python scripts/run_lattice.py
-
-    # 2) Export (JSONL/CSV/Markdown) + checksums
-    python scripts/run_matrix.py
-
-    # 3) Tests (roundtrip sanity)
-    pytest -q
-
-    # 4) Package (Bronze artifact + rollback integrity)
-    cd dist
-    tar -czf trustint-bronze-v0.1.tar.gz *.md *.csv *.jsonl SHA256SUMS
-    sha256sum trustint-bronze-v0.1.tar.gz > trustint-bronze-v0.1.sha256
-
----
-
-## 🚀 First Run Guide
-
-To get TRUSTINT up and running for the first time, follow these steps:
-
-1.  **Set HMAC Key:** Ensure the `TRUSTINT_HMAC_KEY` environment variable is set. This key is crucial for the integrity of the provenance ledger. You can generate one using `python scripts/prov_tools.py keygen`.
-    ```bash
-    export TRUSTINT_HMAC_KEY=$(python scripts/prov_tools.py keygen)
-    # Or, for persistent local development, save it to vault/.hmac_key
-    python scripts/prov_tools.py keygen > vault/.hmac_key
-    ```
-2.  **Install Dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-3.  **Run Migrations:** Initialize the database schema.
-    ```bash
-    trustint migrate
-    ```
-4.  **Ingest Data:** Load configuration data from `config/*.yaml` files into the database.
-    ```bash
-    trustint ingest
-    ```
-5.  **Export Reports:** Generate various reports and checksums.
-    ```bash
-    trustint export
-    ```
-6.  **Verify System Health:** Run the doctor command to ensure everything is configured correctly.
-    ```bash
-    trustint doctor
-    ```
-
----
-
-##  CLI Entrypoint
-As an alternative to the individual `run_*.py` scripts, you can use the main `trustint.py` entrypoint:
-
-    # Validate, ingest, and export
-    python scripts/trustint.py validate
-    python scripts/trustint.py ingest
-    python scripts/trustint.py export
-
-    # Search for assets containing "airspace"
-    python scripts/trustint.py search --scope assets "airspace"
-
----
-
-## 🛠 Pipeline Details
-
-### Validate + Ingest
-- JSONSchema validation for: `trusts.yaml`, `roles.yaml`, `assets.yaml`, `laws.yaml`.
-- Rule checks:
-  - Each trust must have **≥1 trustee**.
-  - **Air** assets must specify `jurisdiction` and bounded descriptor (e.g., “0–120m AGL”).
-- DB initialization is now governed by versioned files under `migrations/` (see `migrations/README.md`). The legacy `schema.sql` can be found at `docs/legacy/schema.sql` for historical reference.
-- Ingest normalized entities into `vault/trustint.db`.
-- Append HMAC-chained event to `vault/events.jsonl`.
-
-### Export
-- `dist/trustint_export.jsonl` — machine-friendly summary per trust.
-- `dist/trustint_export.csv` — flat view (trusts, roles, assets).
-- `dist/board_report.md` — board-readable report (roles, LAW assets).
-- `dist/SHA256SUMS` — integrity across exports.
-
----
-
-## 💻 CLI Usage
-
-All core operations are available via the `trustint` command-line interface. Ensure you have installed the project in editable mode (`pip install -e .`) for the `trustint` command to be available in your shell.
-
-```bash
-# Validate configuration files
-trustint validate
-
-# Initialize database and ingest data from config files
-trustint ingest
-
-# Export data to various formats (JSONL, CSV, Markdown)
-trustint export
-
-# Export data to various formats, including PDF
-trustint export --pdf
-
-# Search the database using Full-Text Search (FTS5)
-# Example: Search for assets containing "airspace"
-trustint search --scope assets "airspace"
-
-# Run the daemon to watch for changes in a directory and trigger pipeline commands
-# Example: Watch the 'inbox/' directory and run validate, ingest, and export on changes
-trustint run --watch inbox/ --on-change "validate,ingest,export"
-```
-
----
-
-## 🚀 Commands List
-
-Here's a comprehensive list of all commands and their functionalities implemented in TRUSTINT:
-
-### Core Pipeline Commands (via `trustint` CLI)
-- `trustint validate`: Validates all configuration files against defined schemas and business rules.
-- `trustint ingest`: Initializes the database and ingests data from `config/*.yaml` files. This process is idempotent.
-- `trustint export [--pdf]`: Exports processed data into machine-readable (JSONL, CSV) and human-readable (Markdown) formats. The `--pdf` flag generates an additional PDF report.
-
-### Utility Commands (via `trustint` CLI)
-- `trustint search --scope [scope] "query"`: Performs a full-text search across the database. Supported scopes include `trusts`, `roles`, `assets`, `obligations`, `filings`, or `all`.
-- `trustint run --watch [directory] --on-change [commands]`: Activates daemon mode, monitoring a specified directory for changes and automatically triggering a sequence of commands (e.g., `validate,ingest,export`).
-- `trustint doctor`: Performs read-only health checks on the database (WAL mode, foreign keys, FTS5 availability) and provenance chain integrity.
-
-### Provenance Tools (via `scripts/prov_tools.py`)
-- `python scripts/prov_tools.py keygen`: Generates a new HMAC key for securing the provenance ledger.
-- `python scripts/prov_tools.py chain-verify`: Verifies the integrity of the `vault/events.jsonl` append-only ledger, ensuring no tampering has occurred.
-- `python scripts/prov_tools.py checksums`: Regenerates SHA256 checksums for all exported artifacts in the `dist/` directory, ensuring data integrity.
-
-### Development & Build Commands (via `Makefile`)
-- `make setup`: Installs all project dependencies and sets up the editable installation.
-- `make lint`: Runs code quality checks using Ruff and Mypy.
-- `make test`: Executes all unit and integration tests using Pytest.
-- `make ingest`: Runs the `trustint ingest` command.
-- `make export`: Runs the `trustint export` command.
-- `make package`: Creates a distributable tarball of the project exports with checksums.
-
-### Original Runner Scripts (for backward compatibility)
-- `python scripts/run_lattice.py`: Executes validation and ingestion (equivalent to `trustint validate` and `trustint ingest`).
-- `python scripts/run_matrix.py`: Executes data export (equivalent to `trustint export`).
-
----
-
-## 🧑‍⚖️ Real-World Use (Chairman’s View)
+### 🧑‍⚖️ Real-World Use (Chairman’s View)
 - **Clarity & Oversight** — single source of truth for instruments; cross-jurisdiction visibility.
-- **Defensive Posture** — tamper-evident vault; air/water clauses; legislative hooks (Silver via TenderBot).
+- **Defensive Posture** — tamper-evident vault; air/water clauses; legislative hooks.
 - **Operational Efficiency** — deterministic validation; board exports; reproducible packaging.
 - **Strategic Leverage** — covenantal enforcement; multi-party stewardship; collapse continuity.
 
 ---
 
-## 🧩 Config Schema (Bronze)
-**trusts.yaml**
-    - slug: <kebab-case-id>
-      name: <string>
-      purpose: <string>
-      jurisdiction: <ISO-like code, e.g., NZ>
+## 🚀 Getting Started
 
-**roles.yaml**
-    - trust: <trust.slug>
-      role: trustee | protector | beneficiary | advisor
-      party: <string>
-      powers: { signing_threshold?: int, veto?: [strings...] }
+### 1. Prerequisites
+- Python 3.12+
+- `make`
 
-**assets.yaml**
-    - trust: <trust.slug>
-      class: land | water | air
-      descriptor: <human-readable bounds/identity>
-      jurisdiction: <code>
-      metadata: { titles?: [..], coordinates?: [lat,lon], ... }
+### 2. Installation
+Clone the repository and run the setup command. This will create the virtual environment and install all necessary dependencies.
+```bash
+make setup
+```
 
-**laws.yaml**
-    jurisdictions:
-      - { code: NZ, name: New Zealand }
-      - { code: BVI, name: British Virgin Islands }
-    obligations:
-      - trust: <trust.slug>
-        name: <e.g., IRD Annual Return>
-        kind: compliance | covenant
-        schedule: annual | on change-of-law | ...
-        authority: <regulator/org>
-        details: { statute?: <...>, link?: <...>, notes?: <...> }
+### 3. Configuration & First Run
+The core configuration for your trusts, assets, roles, and laws is managed in the `config/` directory. For a complete walkthrough, please refer to the full **Operator's User Guide**.
 
 ---
 
-## 🔐 Provenance & Integrity
+## 📖 Documentation
+
+This project's documentation is organized to provide comprehensive guidance on its architecture, operation, and policies.
+
+| Document                                                              | Description                                                                                         |
+| :-------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------- |
+| [**Operator's User Guide**](docs/USER_GUIDE_2025-10-06T07-18-23Z.md)   | **(Start Here)** A full guide to setup, architecture, CLI commands, and troubleshooting.            |
+| [**Architectural Decisions (ADRs)**](docs/adr/README.md)              | The rationale and context for key architectural decisions that have shaped the system.              |
+| [**Main Documentation Index**](docs/README.md)                        | The central entry point and map to all project documentation.                                       |
+
+---
+
+## 🛠️ Technical Details
+
+### 📂 Repository Structure
+    TRUSTINT/
+    ├── config/           # YAML files for trusts, roles, assets, laws.
+    ├── core/             # Core application logic (ingest, validate, export).
+    ├── scripts/          # CLI entrypoints and utility scripts.
+    ├── vault/            # Tamper-evident storage (database, ledger, keys).
+    └── ...
+
+### 🧩 Config Schema (Bronze)
+A quick reference for the core YAML configuration:
+**`trusts.yaml`**: `{slug, name, purpose, jurisdiction}`
+**`roles.yaml`**: `{trust, role, party, powers}`
+**`assets.yaml`**: `{trust, class, descriptor, jurisdiction, metadata}`
+**`laws.yaml`**: `{jurisdictions, obligations: {trust, name, kind, schedule, ...}}`
+
+### 🔐 Provenance & Integrity
 - **Ledger:** `vault/events.jsonl` — append-only HMAC chain (prev → mac).
-- **Checksums:** `dist/SHA256SUMS` — SHA256 for exported artifacts.
-- **Vault:** content-addressed paths for evidence and references.
-- **Keys:** local seed at `vault/.hmac_key` (rotate for production; prefer GPG/HSM).
+ - **Checksums:** `dist/SHA256SUMS` — SHA256 for exported artifacts.
+ - **Vault:** content-addressed paths for evidence and references.
+- **Keys:** HMAC key resolution order:
+   1. `TRUSTINT_HMAC_KEY` (env var: base64url or hex)
+   2. `TRUSTINT_HMAC_KEY_FILE` (env var: path to key file)
+   3. `vault/.hmac_key` (file: base64url, hex, or binary)
 
----
-
-## 🧪 Tooling & Policy
+### 🔬 Tooling & Policy
 - **Pre-commit:** Black, Ruff (auto-fix), Mypy, YAML checks.
 - **Testing:** Pytest with golden-file snapshots encouraged.
-- **Style:** Python 3.12, Ruff line-length 100, strict-lean types. (All Ruff errors are now addressed directly in code, no ignores needed).
+- **Style:** Python 3.12, Ruff line-length 100, strict-lean types.
 
 ---
 
-## 🧭 Troubleshooting
-- `ModuleNotFoundError: core`
-  - Ensure `tests/conftest.py` adds repo root to `sys.path` **or** run with `PYTHONPATH=. ...`.
-  - Add `__init__.py` to `utils/`, `scripts/`, `tests/`.
+## 🗺️ Roadmap & Releases
 
-- Exports missing or empty
-  - Verify `config/*.yaml` exist and pass validation.
-  - Run `python scripts/run_lattice.py` before `run_matrix.py`.
+### 🪜 Bronze → Silver → Gold → Diamond
+- **Bronze (current):** Working daemon — ingest, validate, export, provenance; LAW seeded.
+- **Silver:** Multi-trust lattice, jurisdiction overlays, TenderBotNZ integration, richer obligations.
+- **Gold:** Simulation matrices (PvP/PvE/systemic shocks), multi-lattice governance.
+- **Diamond:** Adaptive AI-driven compliance/resilience matrices; autonomous provenance vaulting.
 
-- Checksum mismatch
-  - Re-generate `dist/SHA256SUMS` after modifying any exports.
+### ✨ Future Horizons
+- **CLI → UI → UX Evolution**: The current powerful CLI is the foundation for a future, intuitive graphical user experience. The goal is to provide a seamless workflow for operators of all technical levels.
+- **Front-End Integration**: A web-based front-end is a primary goal for enhancing usability. This could be built with modern frameworks like React or Vue, or explore powerful data visualization libraries such as Palantir's `witchcraft.js` to create rich, interactive dashboards.
+- **Digital Asset Management**: The architecture is designed to be extensible. Future versions will aim to incorporate the management of digital and cryptographic assets (e.g., cryptocurrencies, NFTs, digital deeds) into the same secure provenance framework.
 
----
+### 🧭 Roadmap (Mermaid source)
+```mermaid
+graph TD
+  A[Bronze Gate] --> B[Silver Gate]
+  B --> C[Gold Gate]
+  C --> D[Diamond Gate]
 
-## 🪜 Bronze → Silver → Gold → Diamond
-- **Bronze (current):** Working daemon — ingest, validate, export, provenance; LAW seeded (land, water, air).
-- **Silver:** Multi-trust lattice, jurisdiction overlays, TenderBotNZ integration (legislation scraping), richer obligations.
-- **Gold:** Simulation matrices (PvP/PvE/systemic shocks), multi-lattice governance, incident evidence vault flows.
-- **Diamond:** Adaptive AI-driven compliance/resilience matrices; autonomous provenance vaulting; cross-chain attestations.
+  A:::bronze; B:::silver; C:::gold; D:::diamond
 
----
+classDef bronze fill:#cd7f32,stroke:#333,stroke-width:2px,color:#fff
+classDef silver fill:#c0c0c0,stroke:#333,stroke-width:2px,color:#000
+classDef gold fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
+classDef diamond fill:#b9f2ff,stroke:#333,stroke-width:2px,color:#000
+```
 
-## 🗺 Roadmap (Mermaid source)
-    %% paste into a mermaid renderer if desired
-    graph TD
-      A[Bronze Gate] --> B[Silver Gate]
-      B --> C[Gold Gate]
-      C --> D[Diamond Gate]
-
-      A:::bronze
-      B:::silver
-      C:::gold
-      D:::diamond
-
-    classDef bronze fill:#cd7f32,stroke:#333,stroke-width:2px,color:#fff
-    classDef silver fill:#c0c0c0,stroke:#333,stroke-width:2px,color:#000
-    classDef gold fill:#ffd700,stroke:#333,stroke-width:2px,color:#000
-    classDef diamond fill:#b9f2ff,stroke:#333,stroke-width:2px,color:#000
-
----
-
-## 📂 Artifact Provenance (Release Ritual)
+### 📦 Artifact Provenance (Release Ritual)
 - Tag gate: `bronze-gate-v0.1`
 - Build tarball in `dist/` with exports + `SHA256SUMS`
 - Emit `.sha256` and (optional) `.sha512`
@@ -366,28 +169,4 @@ Here's a comprehensive list of all commands and their functionalities implemente
 - **Docs → CC BY-SA 4.0** (`LICENSE-DOCS`) — ontology + cultural artifacts remain libre with attribution.
 - **Covenant → `ADDENDUM.md`** — provenance, collapse continuity, exportability, AI obligations.
 
----
-
-## ⚔️ Synthesis
-TRUSTINT at Bronze is a **living covenant + working daemon**:
-- Deterministic pipeline (no LLMs).
-- Legally shielded (AGPL, CC, covenant).
-- Provenance enforced (ledger + checksums).
-- Real-world applicable (board reports, compliance exports, LAW sovereignty).
-- Positioned for Silver without code churn: add multi-trust, jurisdiction overlays, and scraping integration.
-
-### Current Status: All Systems Go
-Comprehensive checks confirm the robust functionality of all components:
-- **Core Pipeline:** `make setup`, `lint`, `test`, `ingest`, `export`, and `package` targets all execute successfully.
-- **CLI:** The `trustint` command and its subcommands (`validate`, `ingest`, `export`, `search`, `run`) are fully operational.
-- **Daemon Mode:** The `trustint run` command effectively monitors directories and triggers the pipeline on changes, with proper debouncing.
-- **Database:** The `vault/trustint.db` is correctly populated, queried, and maintained, with idempotency verified.
-- **Provenance:** The `vault/events.jsonl` ledger's integrity is verifiable via `prov_tools.py chain-verify`, demonstrating tamper detection.
-- **Backward Compatibility:** Original runner scripts (`scripts/run_lattice.py`, `scripts/run_matrix.py`) still function as expected.
-- **Utility Tools:** `prov_tools.py keygen` and `checksums` commands perform their intended operations.
-
-## 🗓 Release Notes
-
-### `v0.2.0-silver.1` - Pipeline Overview & Roadmap (2025-09-20T12-38-13Z)
-
-A comprehensive pipeline overview and enhancement roadmap has been generated, detailing the current system architecture, resolved issues (schema version idempotency), remaining gaps, and a strategic plan for future development. This report is available at `docs/reports/PIPELINE_OVERVIEW_2025-09-20T12-38-13Z.md`.
+***

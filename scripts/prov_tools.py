@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import hmac
 import json
@@ -7,7 +8,7 @@ import click
 
 from core.matrices import export_csv, export_jsonl, export_markdown, write_checksums
 from utils.logger import get_logger
-from utils.provenance import DEFAULT_KEY_PATH, LEDGER_PATH, _read_key
+from utils.provenance import LEDGER_PATH, load_hmac_key
 
 LOG = get_logger("prov_tools")
 
@@ -19,11 +20,10 @@ def cli():
 
 @cli.command()
 def keygen():
-    """Generate a new HMAC key."""
-    new_key = os.urandom(32)
-    DEFAULT_KEY_PATH.write_bytes(new_key)
-    os.chmod(DEFAULT_KEY_PATH, 0o600)
-    LOG.info(f"New HMAC key generated at: {DEFAULT_KEY_PATH}")
+    """Generate a new 32-byte HMAC key and print it as base64url text."""
+    new_key_bytes = os.urandom(32)
+    b64_key = base64.urlsafe_b64encode(new_key_bytes).rstrip(b"=").decode("ascii")
+    click.echo(b64_key)
 
 
 @cli.command()
@@ -33,7 +33,12 @@ def chain_verify():
         LOG.warning("Ledger file not found. Nothing to verify.")
         return
 
-    key = _read_key()
+    key, status = load_hmac_key()
+    if not key:
+        LOG.error(f"Failed to load HMAC key: {status}")
+        raise click.Abort()
+    click.echo(status.replace("PASS: ", ""))
+
     lines = LEDGER_PATH.read_text(encoding="utf-8").strip().splitlines()
     last_mac = ""
 
@@ -59,7 +64,7 @@ def chain_verify():
             LOG.error(f"Error decoding JSON at line {i+1}: {e}")
             raise e
 
-    LOG.info("Chain verification successful.")
+    click.echo("Chain verification successful.")
 
 
 @cli.command()

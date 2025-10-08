@@ -1,0 +1,23 @@
+
+{
+  "analysis_timestamp": "2025-10-06T17:08:00Z",
+  "report_id": "a3f1e8a-20251006",
+  "type": "SystemIntegrityAnalysis",
+  "findings": [
+    {
+      "id": "ProvenanceChainCorruption-001",
+      "severity": "CRITICAL",
+      "title": "Provenance Ledger MAC Mismatch",
+      "description": "A 'mac' (HMAC signature) in the event ledger does not match the calculated signature for the event's content, indicating the event was altered after being written.",
+      "location": {
+        "file": "vault/events.jsonl",
+        "line": 199
+      },
+      "evidence": {
+        "actual_mac": "fd4f34a11247dfe7ab02f31467716444c1523caed43f5ae8f314a93ac44f44ff",
+        "expected_mac": "3c5e8bdf27a427f3745f94bd8f1de9026e0623b537c26d8f78f8e7fcfa2b97f2"
+      },
+      "conclusion": "The event on line 199 was definitively altered. The integrity of the provenance chain is compromised from this point forward."
+    }
+  ]
+}
