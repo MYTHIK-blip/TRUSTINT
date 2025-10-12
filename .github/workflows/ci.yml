@@ -32,4 +32,6 @@ jobs:
         run: '[ -n "$TRUSTINT_HMAC_KEY" ] || (echo "Missing TRUSTINT_HMAC_KEY" && exit 1)'
 
       - name: Test (pytest)
-        run: pytest -q
+        run: |
+          unset TRUSTINT_HMAC_KEY
+          pytest -q
