@@ -19,6 +19,43 @@ _B64URL_RE = re.compile(r"^[A-Za-z0-9\-_]+$")
 _HEX_RE = re.compile(r"^[a-fA-F0-9]+$")
 
 
+# REPLACE the entire function with this:
+
+
+def _preflight_hmac_or_die(vault_key_path: Optional[Path] = None) -> bytes:
+    # Hard refuses
+    if os.getenv("CI") == "true":
+        raise SystemExit("Refusing to sign in CI.")
+    if os.getenv("TRUSTINT_READONLY") in {"1", "true", "True"}:
+        raise SystemExit("Refusing to sign in read-only mode.")
+
+    # Resolve key path at CALL TIME so tests that monkeypatch DEFAULT_KEY_PATH are honored
+    key_path = Path(vault_key_path) if vault_key_path is not None else DEFAULT_KEY_PATH
+    ek = os.getenv("TRUSTINT_HMAC_KEY")
+
+    def _b64u_decode(b: bytes) -> bytes:
+        return base64.urlsafe_b64decode(b + b"=" * ((4 - (len(b) % 4)) % 4))
+
+    def _try_decode_file(raw: bytes) -> bytes:
+        try:
+            return _b64u_decode(raw.strip())  # base64url text
+        except Exception:
+            return raw  # treat as raw key bytes
+
+    if key_path.exists():
+        vk = _try_decode_file(key_path.read_bytes())
+        if ek:
+            if _b64u_decode(ek.encode()) != vk:
+                raise SystemExit("Refusing to sign with non-vault HMAC key.")
+        return vk
+    else:
+        if ek:
+            return _b64u_decode(ek.encode())
+        raise SystemExit(
+            f"No HMAC key available: {key_path} missing and TRUSTINT_HMAC_KEY not set."
+        )
+
+
 def load_hmac_key() -> Tuple[bytes, str]:
     """
     Loads the HMAC key from environment, file, or generates a new one.
@@ -127,7 +164,7 @@ def append_event(event: dict, key: Optional[bytes] = None) -> dict:
     LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     if key is None:
-        key, _ = load_hmac_key()  # Discard status message
+        key = _preflight_hmac_or_die()
 
     prev_mac = ""
     if LEDGER_PATH.exists():
